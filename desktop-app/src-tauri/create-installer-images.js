@@ -149,6 +149,72 @@ async function createImages() {
   await pngToBmp24(headerPng, path.join(outputDir, 'installer-header.bmp'));
   console.log('Header image created: installer-header.bmp');
 
+  // Create WiX banner image (493x58) - logo on left with dark bg
+  console.log('Creating WiX banner image...');
+  const bannerWidth = 493;
+  const bannerHeight = 58;
+  const logoSizeBanner = 48;
+
+  const bannerBg = await sharp({
+    create: {
+      width: bannerWidth,
+      height: bannerHeight,
+      channels: 4,
+      background: darkBg
+    }
+  }).png().toBuffer();
+
+  const logoForBanner = await sharp(logoPath)
+    .resize(logoSizeBanner, logoSizeBanner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+
+  const bannerPng = await sharp(bannerBg)
+    .composite([{
+      input: logoForBanner,
+      top: Math.floor((bannerHeight - logoSizeBanner) / 2),
+      left: 8
+    }])
+    .png()
+    .toBuffer();
+
+  fs.writeFileSync(path.join(outputDir, 'wix-banner.png'), bannerPng);
+  await pngToBmp24(bannerPng, path.join(outputDir, 'wix-banner.bmp'));
+  console.log('WiX banner image created: wix-banner.bmp');
+
+  // Create WiX dialog image (493x312) - small logo in bottom-left, rest is dark bg for text readability
+  console.log('Creating WiX dialog image...');
+  const dialogWidth = 493;
+  const dialogHeight = 312;
+  const logoSizeDialog = 80;
+
+  const dialogBg = await sharp({
+    create: {
+      width: dialogWidth,
+      height: dialogHeight,
+      channels: 4,
+      background: darkBg
+    }
+  }).png().toBuffer();
+
+  const logoForDialog = await sharp(logoPath)
+    .resize(logoSizeDialog, logoSizeDialog, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+
+  const dialogPng = await sharp(dialogBg)
+    .composite([{
+      input: logoForDialog,
+      top: dialogHeight - logoSizeDialog - 20,
+      left: 20
+    }])
+    .png()
+    .toBuffer();
+
+  fs.writeFileSync(path.join(outputDir, 'wix-dialog.png'), dialogPng);
+  await pngToBmp24(dialogPng, path.join(outputDir, 'wix-dialog.bmp'));
+  console.log('WiX dialog image created: wix-dialog.bmp');
+
   console.log('Done!');
 }
 
