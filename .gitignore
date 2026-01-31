@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Rust build output
+target/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# IDE / editor
+.vs/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# Environment / secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# Markdown docs (except root README)
+*.md
+!README.md
+
+# Tor data (runtime generated)
+tor-data/

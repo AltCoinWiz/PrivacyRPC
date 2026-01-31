@@ -1,0 +1,259 @@
+/**
+ * PrivacyRPC Overlay Notification Styles
+ * Isolated CSS for in-page overlay notifications
+ * Namespaced to prevent conflicts with page styles
+ */
+
+/* Container - fixed position top-right */
+.privacyrpc-notification-container {
+  position: fixed !important;
+  top: 16px !important;
+  right: 16px !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  pointer-events: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Individual notification */
+.privacyrpc-notification {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  padding: 14px 16px !important;
+  background: #0a0a0a !important;
+  border: 1px solid #1E2328 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(90, 245, 245, 0.1) !important;
+  max-width: 360px !important;
+  min-width: 300px !important;
+  pointer-events: auto !important;
+  opacity: 0 !important;
+  transform: translateX(100%) !important;
+  animation: privacyrpc-slide-in 0.3s ease-out forwards !important;
+}
+
+/* Slide-in animation */
+@keyframes privacyrpc-slide-in {
+  from {
+    opacity: 0 !important;
+    transform: translateX(100%) !important;
+  }
+  to {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+  }
+}
+
+/* Slide-out animation */
+.privacyrpc-notification.privacyrpc-closing {
+  animation: privacyrpc-slide-out 0.25s ease-in forwards !important;
+}
+
+@keyframes privacyrpc-slide-out {
+  from {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+  }
+  to {
+    opacity: 0 !important;
+    transform: translateX(100%) !important;
+  }
+}
+
+/* Priority-based border colors */
+.privacyrpc-notification.privacyrpc-critical {
+  border-color: #FF4757 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 71, 87, 0.3) !important;
+}
+
+.privacyrpc-notification.privacyrpc-high {
+  border-color: #FFB800 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 184, 0, 0.2) !important;
+}
+
+.privacyrpc-notification.privacyrpc-medium {
+  border-color: #5AF5F5 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 8px rgba(90, 245, 245, 0.2) !important;
+}
+
+.privacyrpc-notification.privacyrpc-low {
+  border-color: #1E2328 !important;
+}
+
+/* Icon */
+.privacyrpc-notification-icon {
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  border-radius: 8px !important;
+  background: #1E2328 !important;
+}
+
+.privacyrpc-notification-icon svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.privacyrpc-notification.privacyrpc-critical .privacyrpc-notification-icon {
+  background: rgba(255, 71, 87, 0.15) !important;
+  color: #FF4757 !important;
+}
+
+.privacyrpc-notification.privacyrpc-high .privacyrpc-notification-icon {
+  background: rgba(255, 184, 0, 0.15) !important;
+  color: #FFB800 !important;
+}
+
+.privacyrpc-notification.privacyrpc-medium .privacyrpc-notification-icon {
+  background: rgba(90, 245, 245, 0.15) !important;
+  color: #5AF5F5 !important;
+}
+
+.privacyrpc-notification.privacyrpc-low .privacyrpc-notification-icon {
+  background: #1E2328 !important;
+  color: #7D7D7D !important;
+}
+
+/* Content */
+.privacyrpc-notification-content {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.privacyrpc-notification-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  margin: 0 0 4px 0 !important;
+  line-height: 1.3 !important;
+}
+
+.privacyrpc-notification-message {
+  font-size: 12px !important;
+  color: #7D7D7D !important;
+  margin: 0 !important;
+  line-height: 1.4 !important;
+  word-break: break-word !important;
+}
+
+/* Close button */
+.privacyrpc-notification-close {
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  color: #7D7D7D !important;
+  border-radius: 6px !important;
+  padding: 0 !important;
+  margin: -4px -4px -4px 0 !important;
+  transition: background 0.15s, color 0.15s !important;
+  flex-shrink: 0 !important;
+}
+
+.privacyrpc-notification-close:hover {
+  background: #1E2328 !important;
+  color: #ffffff !important;
+}
+
+.privacyrpc-notification-close svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* Action buttons */
+.privacyrpc-notification-actions {
+  display: flex !important;
+  gap: 8px !important;
+  margin-top: 12px !important;
+}
+
+.privacyrpc-notification-btn {
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+  border: none !important;
+  font-family: inherit !important;
+}
+
+.privacyrpc-notification-btn-primary {
+  background: #5AF5F5 !important;
+  color: #0a0a0a !important;
+}
+
+.privacyrpc-notification-btn-primary:hover {
+  background: #7FF7F7 !important;
+  box-shadow: 0 0 12px rgba(90, 245, 245, 0.4) !important;
+}
+
+.privacyrpc-notification-btn-secondary {
+  background: #1E2328 !important;
+  color: #7D7D7D !important;
+}
+
+.privacyrpc-notification-btn-secondary:hover {
+  background: #2A3038 !important;
+  color: #ffffff !important;
+}
+
+/* Progress bar for auto-dismiss */
+.privacyrpc-notification-progress {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  height: 3px !important;
+  background: rgba(90, 245, 245, 0.5) !important;
+  border-radius: 0 0 12px 12px !important;
+  animation: privacyrpc-progress linear forwards !important;
+}
+
+.privacyrpc-notification.privacyrpc-critical .privacyrpc-notification-progress {
+  background: rgba(255, 71, 87, 0.5) !important;
+}
+
+.privacyrpc-notification.privacyrpc-high .privacyrpc-notification-progress {
+  background: rgba(255, 184, 0, 0.5) !important;
+}
+
+@keyframes privacyrpc-progress {
+  from {
+    width: 100% !important;
+  }
+  to {
+    width: 0% !important;
+  }
+}
+
+/* Logo/branding */
+.privacyrpc-notification-brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid #1E2328 !important;
+}
+
+.privacyrpc-notification-brand-text {
+  font-size: 10px !important;
+  color: #7D7D7D !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.privacyrpc-notification-brand-logo {
+  width: 14px !important;
+  height: 14px !important;
+}

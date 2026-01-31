@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Shield background -->
+  <path d="M50 2 L95 18 L95 48 C95 78 50 98 50 98 C50 98 5 78 5 48 L5 18 Z" fill="white"/>
+
+  <!-- Inner shield cutout (dark) -->
+  <path d="M50 10 L85 23 L85 46 C85 70 50 87 50 87 C50 87 15 70 15 46 L15 23 Z" fill="#0a0a0a"/>
+
+  <!-- Wolf head - solid geometric shape -->
+  <path d="M50 20
+           L62 18
+           L70 8
+           L65 28
+           L72 38
+           L70 52
+           L62 60
+           L54 68
+           L50 58
+           L46 62
+           L40 54
+           L32 44
+           L30 32
+           L38 24
+           L50 20Z" fill="white"/>
+
+  <!-- Wolf eye -->
+  <circle cx="54" cy="38" r="4" fill="#0a0a0a"/>
+
+  <!-- Wolf nose/mouth detail -->
+  <path d="M50 58 L54 50 L58 56 L54 54 Z" fill="#0a0a0a"/>
+
+  <!-- Flowing accent lines (solid) -->
+  <path d="M22 28 Q16 48 26 72 L30 70 Q22 48 26 32 Z" fill="white"/>
+  <path d="M30 34 Q26 50 33 68 L36 66 Q30 50 33 38 Z" fill="white" opacity="0.7"/>
+</svg>

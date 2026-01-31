@@ -1,0 +1,105 @@
+{
+  "name": "@privacyrpc/sdk",
+  "version": "2.0.0",
+  "description": "Privacy-first RPC protection for crypto wallets with embedded Tor",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "privacyrpc-download-tor": "./scripts/download-tor.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./tor": {
+      "import": "./dist/tor.mjs",
+      "require": "./dist/tor.js",
+      "types": "./dist/tor.d.ts"
+    },
+    "./mitm": {
+      "import": "./dist/mitm.mjs",
+      "require": "./dist/mitm.js",
+      "types": "./dist/mitm.d.ts"
+    },
+    "./phishing": {
+      "import": "./dist/phishing.mjs",
+      "require": "./dist/phishing.js",
+      "types": "./dist/phishing.d.ts"
+    },
+    "./forward-proxy": {
+      "import": "./dist/forward-proxy.mjs",
+      "require": "./dist/forward-proxy.js",
+      "types": "./dist/forward-proxy.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/tor.ts src/mitm.ts src/phishing.ts src/forward-proxy.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts src/tor.ts src/mitm.ts src/phishing.ts src/forward-proxy.ts --format cjs,esm --dts --watch",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "download-tor": "node scripts/download-tor.js --current",
+    "download-tor:all": "node scripts/download-tor.js",
+    "postinstall": "node scripts/download-tor.js --current || echo 'Tor download skipped - run npm run download-tor manually'",
+    "prepublishOnly": "npm run build && npm run download-tor:all"
+  },
+  "keywords": [
+    "rpc",
+    "proxy",
+    "tor",
+    "privacy",
+    "embedded-tor",
+    "solana",
+    "ethereum",
+    "helius",
+    "quicknode",
+    "blockchain",
+    "crypto",
+    "mitm",
+    "phishing",
+    "security",
+    "wallet",
+    "web3",
+    "anonymous"
+  ],
+  "author": "PrivacyRPC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/privacyrpc/sdk"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "scripts/download-tor.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "dependencies": {
+    "socks-proxy-agent": "^8.0.2",
+    "https-proxy-agent": "^7.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.2",
+    "vitest": "^1.0.0",
+    "eslint": "^8.55.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1"
+  }
+}

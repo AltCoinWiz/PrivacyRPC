@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 360px;
+      height: 540px;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #ffffff;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #050505; }
+    ::-webkit-scrollbar-thumb { background: #1E2328; border-radius: 2px; }
+
+    /* App Container */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid #1E2328;
+      background: #000000;
+    }
+
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-img {
+      width: 28px;
+      height: 28px;
+    }
+
+    .logo-text {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-btn {
+      background: none;
+      border: none;
+      padding: 6px;
+      cursor: pointer;
+      color: #7D7D7D;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
+    }
+
+    .header-btn:hover {
+      background: #050505;
+      color: #5AF5F5;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1E2328;
+    }
+
+    .status-dot.active { background: #5AF5F5; box-shadow: 0 0 8px #5AF5F5; }
+    .status-dot.warning { background: #FFB800; box-shadow: 0 0 8px #FFB800; }
+    .status-dot.error { background: #FF4757; box-shadow: 0 0 8px #FF4757; }
+
+    /* Main Content */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      background: #000000;
+    }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Toggle Switch */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .toggle-row:last-child { border-bottom: none; }
+
+    .toggle-info h4 {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .toggle-info p {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #1E2328;
+      border-radius: 24px;
+      transition: 0.2s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #7D7D7D;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    input:checked + .toggle-slider {
+      background: #0D3D3D;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+      background: #5AF5F5;
+      box-shadow: 0 0 8px #5AF5F5;
+    }
+
+    /* Status Banner */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      background: #050505;
+      border: 1px solid #1E2328;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .status-banner.protected {
+      background: linear-gradient(135deg, #050505 0%, #0A1A1A 100%);
+      border: 1px solid #1E4040;
+    }
+
+    .status-banner.warning {
+      background: linear-gradient(135deg, #050505 0%, #1A1508 100%);
+      border: 1px solid #3D3A0A;
+    }
+
+    .status-banner.danger {
+      background: linear-gradient(135deg, #050505 0%, #1A0A0A 100%);
+      border: 1px solid #3D1A1A;
+    }
+
+    .status-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #5AF5F5;
+    }
+
+    .status-text h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .status-text p {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    /* Alerts List */
+    .alerts-list {
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .alert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .alert-item:last-child { border-bottom: none; }
+
+    .alert-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+      color: #7D7D7D;
+    }
+
+    .alert-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .alert-content h5 {
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .alert-content p {
+      font-size: 10px;
+      color: #7D7D7D;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .alert-time {
+      font-size: 10px;
+      color: #7D7D7D;
+      flex-shrink: 0;
+    }
+
+    .no-alerts {
+      text-align: center;
+      padding: 20px;
+      color: #7D7D7D;
+      font-size: 12px;
+    }
+
+    /* Activity Log */
+    .log-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #1E2328;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .log-method {
+      font-size: 10px;
+      padding: 2px 6px;
+      background: #1E2328;
+      border-radius: 4px;
+      color: #7D7D7D;
+    }
+
+    .log-url {
+      flex: 1;
+      font-size: 11px;
+      color: #7D7D7D;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .log-status {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .log-status.success { background: #0A1A1A; color: #5AF5F5; }
+    .log-status.error { background: #1A0A0A; color: #FF4757; }
+
+    /* Scanner */
+    .scanner-input {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .scanner-input input {
+      flex: 1;
+      padding: 12px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .scanner-input input:focus {
+      outline: none;
+      border-color: #5AF5F5;
+      box-shadow: 0 0 0 2px rgba(90, 245, 245, 0.1);
+    }
+
+    .scanner-input input::placeholder {
+      color: #7D7D7D;
+    }
+
+    .btn {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .btn-primary {
+      background: #5AF5F5;
+      color: #000000;
+    }
+
+    .btn-primary:hover {
+      background: #7FF7F7;
+      box-shadow: 0 0 12px rgba(90, 245, 245, 0.4);
+    }
+
+    .btn-secondary {
+      background: #1E2328;
+      color: #7D7D7D;
+    }
+
+    .btn-secondary:hover {
+      background: #2A3038;
+      color: #fff;
+    }
+
+    .scan-result {
+      padding: 16px;
+      border-radius: 10px;
+      margin-top: 12px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .scan-result.safe {
+      background: #050505;
+      border: 1px solid #1E4040;
+    }
+
+    .scan-result.warning {
+      background: #050505;
+      border: 1px solid #3D3A0A;
+    }
+
+    .scan-result.danger {
+      background: #050505;
+      border: 1px solid #3D1A1A;
+    }
+
+    .scan-result h4 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .scan-result p {
+      font-size: 12px;
+      color: #7D7D7D;
+    }
+
+    .scan-details {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #1E2328;
+    }
+
+    .scan-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 4px 0;
+    }
+
+    .scan-detail-row span:first-child { color: #7D7D7D; }
+
+    /* Settings */
+    .settings-section {
+      margin-bottom: 20px;
+    }
+
+    .settings-section h4 {
+      font-size: 12px;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .settings-input {
+      width: 100%;
+      padding: 12px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .settings-input:focus {
+      outline: none;
+      border-color: #5AF5F5;
+      box-shadow: 0 0 0 2px rgba(90, 245, 245, 0.1);
+    }
+
+    .settings-note {
+      font-size: 11px;
+      color: #7D7D7D;
+      margin-top: 4px;
+    }
+
+    .rpc-warning {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: #050505;
+      border: 1px solid #3D3A0A;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #FFB800;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    /* Navigation */
+    .nav {
+      display: flex;
+      border-top: 1px solid #1E2328;
+      background: #000000;
+    }
+
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 12px 8px;
+      cursor: pointer;
+      transition: 0.2s;
+      border: none;
+      background: none;
+      color: #7D7D7D;
+    }
+
+    .nav-item:hover { color: #fff; }
+    .nav-item.active { color: #5AF5F5; }
+
+    .nav-icon {
+      font-size: 18px;
+    }
+
+    .nav-label {
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    /* Tor Status */
+    .tor-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #000000;
+      border-radius: 8px;
+      margin-top: 8px;
+      border: 1px solid #1E2328;
+    }
+
+    .tor-status.connecting {
+      border-color: #3D3A0A;
+    }
+
+    .tor-status.connected {
+      border-color: #1E4040;
+    }
+
+    .tor-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #1E2328;
+      border-top-color: #5AF5F5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .tor-status-text {
+      flex: 1;
+      font-size: 12px;
+    }
+
+    .tor-ip {
+      font-size: 11px;
+      color: #5AF5F5;
+      font-family: monospace;
+    }
+
+    /* Current Site Banner */
+    .current-site {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .site-favicon {
+      width: 20px;
+      height: 20px;
+      background: #1E2328;
+      border-radius: 4px;
+    }
+
+    .site-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .site-info h5 {
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .site-info p {
+      font-size: 10px;
+      color: #7D7D7D;
+    }
+
+    .site-status {
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .site-status.safe { background: #0A1A1A; color: #5AF5F5; }
+    .site-status.scanning { background: #1E2328; color: #7D7D7D; }
+    .site-status.warning { background: #1A1508; color: #FFB800; }
+
+    /* SVG Icons */
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      vertical-align: middle;
+      color: #7D7D7D;
+    }
+
+    .icon-lg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .nav-icon .icon {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* ZK Compression Stats */
+    .zk-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #1E2328;
+      color: #7D7D7D;
+    }
+
+    .zk-badge.active {
+      background: #0A1A1A;
+      color: #5AF5F5;
+    }
+
+    .zk-stats {
+      display: flex;
+      gap: 12px;
+      padding-top: 8px;
+    }
+
+    .zk-stat {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+    }
+
+    .zk-stat-value {
+      display: block;
+      font-size: 16px;
+      font-weight: 600;
+      color: #5AF5F5;
+    }
+
+    .zk-stat-label {
+      display: block;
+      font-size: 9px;
+      color: #7D7D7D;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    /* Powered by Light Protocol */
+    .powered-by {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #1E2328;
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .powered-by strong {
+      color: #5AF5F5;
+    }
+
+    .light-protocol-logo {
+      border-radius: 4px;
+    }
+
+    /* RPC Provider Links */
+    .rpc-providers {
+      margin-top: 8px;
+    }
+
+    .rpc-provider-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      text-decoration: none;
+      color: #7D7D7D;
+      transition: all 0.2s;
+    }
+
+    .rpc-provider-link:hover {
+      border-color: #5AF5F5;
+      color: #5AF5F5;
+    }
+
+    .rpc-provider-link .provider-logo {
+      flex-shrink: 0;
+    }
+
+    .rpc-provider-link span {
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    /* Extension List */
+    .extension-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .extension-item:last-child { border-bottom: none; }
+
+    .extension-icon {
+      width: 24px;
+      height: 24px;
+      background: #1E2328;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .extension-icon img {
+      width: 16px;
+      height: 16px;
+    }
+
+    .extension-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .extension-info h5 {
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .extension-info p {
+      font-size: 10px;
+      color: #7D7D7D;
+    }
+
+    .extension-badge {
+      font-size: 9px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .extension-badge.wallet { background: #0A1A1A; color: #5AF5F5; }
+    .extension-badge.protected { background: #0A1A1A; color: #5AF5F5; }
+    .extension-badge.warning { background: #1A1508; color: #FFB800; }
+    .extension-badge.other { background: #1E2328; color: #7D7D7D; }
+
+    .extension-item.suspicious {
+      background: rgba(255, 71, 87, 0.05);
+      border-radius: 6px;
+      padding: 8px;
+      margin: -8px 0;
+      margin-bottom: 4px;
+    }
+
+    .extension-item.suspicious .extension-info p {
+      color: #FFB800;
+    }
+
+    /* Clickable items */
+    .clickable {
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .clickable:hover {
+      background: #0A0A0A;
+    }
+
+    .clickable:active {
+      transform: scale(0.98);
+    }
+
+    .current-site.clickable:hover {
+      border-color: #5AF5F5;
+    }
+
+    .extension-item.clickable:hover {
+      background: #0A0A0A;
+    }
+
+    /* Detail Page */
+    .detail-header {
+      margin-bottom: 16px;
+    }
+
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      color: #7D7D7D;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 8px 0;
+      transition: color 0.2s;
+    }
+
+    .back-btn:hover {
+      color: #5AF5F5;
+    }
+
+    .detail-card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .detail-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .detail-icon {
+      width: 40px;
+      height: 40px;
+      background: #1E2328;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .detail-icon img {
+      width: 28px;
+      height: 28px;
+    }
+
+    .detail-title {
+      flex: 1;
+    }
+
+    .detail-title h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .detail-title p {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .rating-badge {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .rating-badge.safe {
+      background: #0A1A1A;
+      color: #5AF5F5;
+    }
+
+    .rating-badge.warning {
+      background: #1A1508;
+      color: #FFB800;
+    }
+
+    .rating-badge.danger {
+      background: #1A0A0A;
+      color: #FF4757;
+    }
+
+    .rating-badge.unknown {
+      background: #1E2328;
+      color: #7D7D7D;
+    }
+
+    .detail-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .detail-stat {
+      text-align: center;
+      padding: 12px 8px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+    }
+
+    .detail-stat-value {
+      display: block;
+      font-size: 18px;
+      font-weight: 600;
+      color: #5AF5F5;
+    }
+
+    .detail-stat-label {
+      display: block;
+      font-size: 9px;
+      color: #7D7D7D;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    .detail-section {
+      margin-top: 16px;
+    }
+
+    .detail-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+
+    .rpc-call-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .rpc-call-method {
+      font-size: 10px;
+      padding: 3px 8px;
+      background: #1E2328;
+      border-radius: 4px;
+      color: #5AF5F5;
+      font-weight: 500;
+    }
+
+    .rpc-call-endpoint {
+      flex: 1;
+      font-size: 11px;
+      color: #7D7D7D;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rpc-call-count {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #1E2328;
+      font-size: 12px;
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-row-label {
+      color: #7D7D7D;
+    }
+
+    .info-row-value {
+      color: #fff;
+      text-align: right;
+      max-width: 60%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .permission-tag {
+      display: inline-block;
+      font-size: 10px;
+      padding: 3px 6px;
+      background: #1E2328;
+      border-radius: 4px;
+      color: #7D7D7D;
+      margin: 2px;
+    }
+
+    .permission-tag.warning {
+      background: #1A1508;
+      color: #FFB800;
+    }
+
+    /* Endpoint items */
+    .endpoint-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .endpoint-item:last-child { border-bottom: none; }
+
+    .endpoint-host {
+      flex: 1;
+      font-size: 12px;
+      color: #fff;
+      font-family: 'SF Mono', Monaco, monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .endpoint-count {
+      font-size: 11px;
+      color: #5AF5F5;
+      background: #0A1A1A;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    /* Activity item clickable */
+    .log-item.clickable {
+      cursor: pointer;
+      transition: background 0.2s;
+      border-radius: 6px;
+      margin: 0 -8px;
+      padding: 10px 8px;
+    }
+
+    .log-item.clickable:hover {
+      background: #0A0A0A;
+    }
+
+    /* RPC Detail styles */
+    .rpc-detail-section {
+      margin-bottom: 16px;
+    }
+
+    .rpc-detail-label {
+      font-size: 11px;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .rpc-detail-value {
+      font-size: 13px;
+      color: #fff;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'SF Mono', Monaco, monospace;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    .rpc-detail-value.success {
+      border-color: #1E4040;
+    }
+
+    .rpc-detail-value.error {
+      border-color: #3D1A1A;
+    }
+
+    /* Notification checkbox rows */
+    .notif-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #1E2328;
+      cursor: pointer;
+      font-size: 12px;
+      color: #7D7D7D;
+      transition: color 0.2s;
+    }
+
+    .notif-checkbox-row:last-child {
+      border-bottom: none;
+    }
+
+    .notif-checkbox-row:hover {
+      color: #ffffff;
+    }
+
+    .notif-checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #5AF5F5;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo-section">
+        <img src="icons/icon48.png" class="logo-img" alt="PrivacyRPC">
+        <span class="logo-text">PrivacyRPC</span>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn" id="openSidePanel" title="Open in Side Panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+        <button class="header-btn" id="openPopout" title="Open in Window">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </button>
+        <span class="status-dot" id="headerDot"></span>
+        <span id="headerStatus">Inactive</span>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <!-- Home Page -->
+      <div class="page active" id="page-home">
+        <!-- Status Banner -->
+        <div class="status-banner protected" id="statusBanner">
+          <div class="status-icon" id="statusIcon">
+            <span class="icon icon-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          </div>
+          <div class="status-text">
+            <h3 id="statusTitle">Protection Active</h3>
+            <p id="statusSubtitle">All RPC traffic is being routed securely</p>
+          </div>
+        </div>
+
+        <!-- Current Site -->
+        <div class="current-site" id="currentSite">
+          <div class="site-favicon"></div>
+          <div class="site-info">
+            <h5 id="siteName">No site detected</h5>
+            <p id="siteRpcCount">0 RPC calls detected</p>
+          </div>
+          <span class="site-status scanning" id="siteStatus">-</span>
+        </div>
+
+        <!-- Toggles -->
+        <div class="card">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <h4>PrivacyRPC Protection</h4>
+              <p>Route RPC through secure proxy</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="toggleProtection">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <h4>Tor Routing</h4>
+              <p>Hide IP from RPC providers</p>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="toggleTor">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <!-- Tor Status (shown when connecting/connected) -->
+          <div class="tor-status connecting" id="torStatus" style="display: none;">
+            <div class="tor-spinner" id="torSpinner"></div>
+            <span class="tor-status-text" id="torStatusText">Connecting to Tor...</span>
+            <span class="tor-ip" id="torIp"></span>
+          </div>
+        </div>
+
+        <!-- ZK Compression Stats -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">ZK Compression</span>
+            <span class="zk-badge" id="zkStatus">OFF</span>
+          </div>
+          <div class="zk-stats">
+            <div class="zk-stat">
+              <span class="zk-stat-value" id="zkCompressed">0</span>
+              <span class="zk-stat-label">Compressed</span>
+            </div>
+            <div class="zk-stat">
+              <span class="zk-stat-value" id="zkSavings">0</span>
+              <span class="zk-stat-label">Est. Savings</span>
+            </div>
+            <div class="zk-stat">
+              <span class="zk-stat-value" id="zkCacheHits">0</span>
+              <span class="zk-stat-label">Cache Hits</span>
+            </div>
+          </div>
+          <div class="powered-by">
+            <svg class="light-protocol-logo" width="18" height="18" viewBox="0 0 153.5 153.5" fill="none">
+              <rect width="153" height="153" rx="15" fill="#0066ff" x="0.25" y="0.25"/>
+              <path d="M 84.6445,36.72955 70.666,87.534 c -0.6435,2.3385 -4.1825,1.8855 -4.1825,-0.5355 V 34.40475 c 0,-4.96445 4.136,-8.989 9.238,-8.989 6.073,0 10.494,5.6051 8.923,11.3138 z" fill="#ffffff"/>
+              <path d="M 109.9075,62.6705 77.136,93.2355 c -1.7115,1.596 -4.3425,-0.4495 -3.1795,-2.4725 l 22.264,-38.7335 c 2.662,-4.63065 8.8515,-5.8499 13.0845,-2.5776 4.249,3.2846 4.5345,9.5511 0.6025,13.2186 z" fill="#ffffff"/>
+              <path d="m 105.7575,101.3905 h -24.869 c -2.197,0 -2.8965,-3.057 -0.931,-4.071 l 22.2435,-11.479 c 5.288,-2.729 11.5095,1.24 11.5095,7.3415 0,4.5335 -3.5605,8.2085 -7.953,8.2085 z" fill="#ffffff"/>
+              <path fill-rule="evenodd" clip-rule="evenodd" d="m 46.9758,25.41575 c 3.9692,0 7.1867,3.21765 7.1867,7.1868 v 88.29495 c 0,3.969 -3.2175,7.187 -7.1867,7.187 -3.96915,0 -7.1868,-3.218 -7.1868,-7.187 V 32.60255 c 0,-3.96915 3.21765,-7.1868 7.1868,-7.1868 z" fill="#ffffff"/>
+              <path fill-rule="evenodd" clip-rule="evenodd" d="m 113.711,120.8975 c 0,3.9695 -3.2175,7.187 -7.187,7.187 H 46.97635 c -3.96915,0 -7.1868,-3.2175 -7.1868,-7.187 0,-3.969 3.21765,-7.1865 7.1868,-7.1865 H 106.524 c 3.9695,0 7.187,3.2175 7.187,7.1865 z" fill="#ffffff"/>
+            </svg>
+            <span>Powered by <strong>Light Protocol</strong></span>
+          </div>
+        </div>
+
+        <!-- Detected Extensions -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Installed Extensions</span>
+            <span style="font-size: 11px; color: #7D7D7D;" id="extensionCount">0</span>
+          </div>
+          <div class="alerts-list" id="extensionsList" style="max-height: 160px;">
+            <div class="no-alerts">Scanning for extensions...</div>
+          </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Security Alerts</span>
+            <span style="font-size: 11px; color: #7D7D7D;" id="alertCount">0</span>
+          </div>
+          <div class="alerts-list" id="alertsList">
+            <div class="no-alerts">No security alerts</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Page -->
+      <div class="page" id="page-activity">
+        <!-- Current Site Activity -->
+        <div class="current-site" id="activitySiteBanner">
+          <div class="site-favicon"></div>
+          <div class="site-info">
+            <h5 id="activitySiteName">No site detected</h5>
+            <p id="activitySiteRpcCount">0 RPC calls on this page</p>
+          </div>
+          <span class="site-status safe" id="activitySiteStatus">-</span>
+        </div>
+
+        <!-- Endpoints Summary -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Endpoints Called</span>
+            <span style="font-size: 11px; color: #7D7D7D;" id="endpointCount">0</span>
+          </div>
+          <div class="endpoints-list" id="endpointsList" style="max-height: 120px; overflow-y: auto;">
+            <div class="no-alerts">No endpoints detected</div>
+          </div>
+        </div>
+
+        <!-- Recent Activity for This Site -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recent Calls</span>
+            <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 11px;" id="clearActivity">Clear</button>
+          </div>
+          <div class="alerts-list" id="activityList" style="max-height: 200px;">
+            <div class="no-alerts">No RPC activity yet</div>
+          </div>
+          <div class="activity-footer" id="activityFooter" style="display: none;">
+            <button class="btn btn-secondary" style="width: 100%; margin-top: 12px;" id="viewAllActivity">
+              View All Activity
+            </button>
+          </div>
+        </div>
+
+        <!-- Download Button -->
+        <button class="btn btn-primary" style="width: 100%;" id="downloadActivity">
+          <span style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download Activity Log
+          </span>
+        </button>
+      </div>
+
+      <!-- All Activity Page -->
+      <div class="page" id="page-all-activity">
+        <div class="detail-header">
+          <button class="back-btn" id="allActivityBackBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">All RPC Activity</span>
+            <span style="font-size: 11px; color: #7D7D7D;" id="allActivityCount">0</span>
+          </div>
+          <div class="alerts-list" id="allActivityList" style="max-height: 400px;">
+            <div class="no-alerts">No RPC activity yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RPC Call Detail Page -->
+      <div class="page" id="page-rpc-detail">
+        <div class="detail-header">
+          <button class="back-btn" id="rpcDetailBackBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+        </div>
+        <div class="detail-content" id="rpcDetailContent">
+          <!-- Dynamic content loaded here -->
+        </div>
+      </div>
+
+      <!-- Scanner Page -->
+      <div class="page" id="page-scanner">
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 12px;">Scan Website</div>
+          <div class="scanner-input">
+            <input type="text" id="scanUrl" placeholder="Enter URL to scan...">
+            <button class="btn btn-primary" id="scanBtn">Scan</button>
+          </div>
+          <p style="font-size: 11px; color: #7D7D7D;">Analyze a website's RPC calls for security issues</p>
+        </div>
+
+        <div id="scanResults"></div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 12px;">Recent Scans</div>
+          <div class="alerts-list" id="recentScans">
+            <div class="no-alerts">No recent scans</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail Page (for site/extension info) -->
+      <div class="page" id="page-detail">
+        <div class="detail-header">
+          <button class="back-btn" id="detailBackBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+        </div>
+
+        <!-- Detail Content -->
+        <div class="detail-content" id="detailContent">
+          <!-- Dynamic content loaded here -->
+        </div>
+      </div>
+
+      <!-- Settings Page -->
+      <div class="page" id="page-settings">
+        <div class="settings-section">
+          <h4>Private RPC Endpoint</h4>
+          <div class="rpc-warning" id="rpcWarning">
+            <span class="icon" style="flex-shrink: 0; color: #FFB800;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+            <span>Please sign up for a <strong style="color: #5AF5F5;">private RPC</strong> for maximum security and privacy.</span>
+          </div>
+          <input type="text" class="settings-input" id="customRpc" placeholder="https://your-rpc-endpoint.com">
+          <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" id="saveRpc">Save RPC</button>
+
+          <div class="rpc-providers">
+            <p class="settings-note" style="margin-bottom: 12px; margin-top: 16px;">Get a free private RPC from:</p>
+            <a href="https://www.helius.dev/" target="_blank" class="rpc-provider-link">
+              <svg class="provider-logo" width="80" height="20" viewBox="0 0 562.18 118.07" fill="none">
+                <path fill="#e84125" d="M74.65,24.74c-4.64-1.96-9.74-3.04-15.1-3.04s-10.46,1.08-15.1,3.04L58.32.71c.54-.94,1.9-.94,2.44,0l13.88,24.03Z"/>
+                <path fill="#e84125" d="M40.76,26.54c-9.14,5.06-16.01,13.7-18.74,24.03l-10.31-26.27c-.4-1.01.45-2.07,1.52-1.91l27.53,4.15Z"/>
+                <path fill="#e84125" d="M29,84.46L1,75.82c-1.04-.32-1.34-1.65-.55-2.38l20.8-19.3c-.34,2.07-.52,4.2-.52,6.37,0,9.04,3.09,17.36,8.27,23.95Z"/>
+                <path fill="#e84125" d="M58.97,99.32l-24.55,16.73c-.9.61-2.12.03-2.2-1.06l-2.19-29.29c7,8.2,17.36,13.44,28.94,13.61Z"/>
+                <path fill="#e84125" d="M88.98,85.82l-2.18,29.14c-.08,1.08-1.3,1.67-2.2,1.06l-24.5-16.7c11.55-.16,21.88-5.36,28.88-13.5Z"/>
+                <path fill="#e84125" d="M118.08,75.73l-27.88,8.6c5.12-6.57,8.17-14.84,8.17-23.82,0-2.2-.19-4.36-.54-6.46l20.79,19.29c.8.74.49,2.07-.54,2.38Z"/>
+                <path fill="#e84125" d="M107.39,24.35l-10.3,26.26c-2.72-10.32-9.57-18.95-18.68-24.03l27.46-4.14c1.07-.16,1.92.9,1.52,1.91Z"/>
+                <path fill="#e84125" d="M177.83,30.15v29.7h34.85v-27.98h15.88v66.6h-15.88v-24.46h-34.85v24.46h-15.88V34.44l15.88-4.29Z"/>
+                <path fill="#e84125" d="M257.31,84.3h48.58l-4.29,14.16h-60.16V31.86h64.46l-4.29,14.16h-44.29v12.1h41.28v14.16h-41.28v12.02Z"/>
+                <path fill="#e84125" d="M331.38,31.86v52.44h46.86l-4.29,14.16h-58.45V31.86h15.88Z"/>
+                <path fill="#e84125" d="M400.99,31.86v66.6h-15.88V31.86h15.88Z"/>
+                <path fill="#e84125" d="M467.59,31.86h15.88v40.17c0,19.4-15.88,27.89-36.39,27.89s-35.28-9.1-35.28-27.89v-37.59l15.88-4.29v41.88c0,9.78,6.52,13.48,20.17,13.48s19.74-3.95,19.74-13.48V31.86Z"/>
+                <path fill="#e84125" d="M491.54,52.12c0-10.21,8.07-20.26,23.86-20.26h45.32l-4.29,14.16h-40.86c-4.89,0-7.3,3.09-7.3,6.09s2.49,6.01,7.3,6.01h23c15.53,0,23.6,10.04,23.6,20.26s-7.64,20.08-23.6,20.08h-47.03l4.29-14.16h42.57c4.81,0,7.3-2.83,7.3-5.92s-2.4-6.18-7.3-6.18h-23c-16.05,0-23.86-10.04-23.86-20.08Z"/>
+              </svg>
+              <span>Sign up free</span>
+            </a>
+            <a href="https://www.quicknode.com/" target="_blank" class="rpc-provider-link">
+              <img src="icons/quicknode.svg" alt="QuickNode" class="provider-logo" style="height: 18px; width: auto;">
+              <span>Sign up free</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>Proxy Settings</h4>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" class="settings-input" id="proxyHost" placeholder="127.0.0.1" style="flex: 2;">
+            <input type="text" class="settings-input" id="proxyPort" placeholder="8899" style="flex: 1;">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Debug Logs</span>
+            <button class="btn btn-secondary" style="padding: 6px 10px; font-size: 11px;" id="clearLogs">Clear</button>
+          </div>
+          <div class="alerts-list" id="debugLogs" style="max-height: 150px; font-family: monospace; font-size: 10px;">
+            <div class="no-alerts">No debug logs</div>
+          </div>
+        </div>
+
+        <!-- Notification Settings -->
+        <div class="settings-section">
+          <h4>Notifications</h4>
+          <div class="card" style="margin-top: 8px;">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <h4>OS Notifications</h4>
+                <p>Show system notifications</p>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="toggleNativeNotif" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <h4>In-Page Overlays</h4>
+                <p>Show alerts on websites</p>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" id="toggleOverlayNotif" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <p class="settings-note" style="margin-top: 12px; margin-bottom: 8px;">Notification types:</p>
+          <div class="card" style="padding: 12px;">
+            <label class="notif-checkbox-row">
+              <input type="checkbox" id="notifProxyError" checked>
+              <span>Proxy errors</span>
+            </label>
+            <label class="notif-checkbox-row">
+              <input type="checkbox" id="notifTorStatus" checked>
+              <span>Tor connection status</span>
+            </label>
+            <label class="notif-checkbox-row">
+              <input type="checkbox" id="notifSuspicious" checked>
+              <span>Suspicious activity</span>
+            </label>
+            <label class="notif-checkbox-row">
+              <input type="checkbox" id="notifExtWarning" checked>
+              <span>Extension warnings</span>
+            </label>
+            <label class="notif-checkbox-row">
+              <input type="checkbox" id="notifProtection" checked>
+              <span>Protection status changes</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>About</h4>
+          <p style="font-size: 12px; color: #7D7D7D;">PrivacyRPC v2.0.0</p>
+          <p style="font-size: 11px; color: #7D7D7D; margin-top: 4px;">Privacy-first Solana RPC protection</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+      <button class="nav-item active" data-page="home">
+        <span class="nav-icon"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span></span>
+        <span class="nav-label">Home</span>
+      </button>
+      <button class="nav-item" data-page="activity">
+        <span class="nav-icon"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span></span>
+        <span class="nav-label">Activity</span>
+      </button>
+      <button class="nav-item" data-page="scanner">
+        <span class="nav-icon"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span></span>
+        <span class="nav-label">Scanner</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <span class="nav-icon"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span></span>
+        <span class="nav-label">Settings</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

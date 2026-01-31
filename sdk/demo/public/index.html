@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrivacyRPC LIVE Demo - Privacy-First Solana RPC Protection</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #000000;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; }
+
+    header {
+      text-align: center;
+      padding: 30px 0;
+      border-bottom: 1px solid #1E2328;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      color: #FFFFFF;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .subtitle { color: #7D7D7D; font-size: 1.1rem; }
+
+    .badge {
+      display: inline-block;
+      background: #5AF5F5;
+      color: #000;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .live-badge {
+      animation: pulse-badge 2s infinite;
+    }
+
+    @keyframes pulse-badge {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .card h2 {
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card h2 .icon { font-size: 1.5rem; }
+
+    .status-bar {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      background: #050505;
+      border: 1px solid #1E2328;
+      padding: 15px 25px;
+      border-radius: 8px;
+      text-align: center;
+      min-width: 120px;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .status-item .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #5AF5F5;
+    }
+
+    .status-item .label {
+      font-size: 0.8rem;
+      color: #7D7D7D;
+      margin-top: 5px;
+    }
+
+    .status-item.danger .value { color: #FF4757; }
+    .status-item.warning .value { color: #FFB800; }
+    .status-item.tor .value { color: #5AF5F5; }
+
+    button {
+      background: #5AF5F5;
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      font-size: 0.9rem;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(90,245,245,0.3);
+    }
+
+    button:disabled {
+      background: #444;
+      color: #7D7D7D;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    button.danger { background: #FF4757; color: #fff; }
+    button.tor { background: #5AF5F5; color: #000; }
+
+    button.secondary {
+      background: #1E2328;
+      color: #7D7D7D;
+    }
+
+    button.secondary:hover {
+      background: #2a3038;
+      box-shadow: none;
+    }
+
+    .button-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    input, select {
+      background: #000000;
+      border: 1px solid #1E2328;
+      padding: 12px 15px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      width: 100%;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #5AF5F5;
+      box-shadow: 0 0 0 2px rgba(90, 245, 245, 0.1);
+    }
+
+    .input-group { margin-bottom: 15px; }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #7D7D7D;
+      font-size: 0.9rem;
+    }
+
+    .alerts { max-height: 400px; overflow-y: auto; }
+
+    .alert {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border-left: 4px solid;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .alert.danger { background: rgba(255,71,87,0.1); border-color: #FF4757; }
+    .alert.warning { background: rgba(255,184,0,0.1); border-color: #FFB800; }
+    .alert.success { background: rgba(90,245,245,0.1); border-color: #5AF5F5; }
+    .alert.info { background: rgba(90,245,245,0.1); border-color: #5AF5F5; }
+
+    .alert-title { font-weight: bold; margin-bottom: 5px; }
+    .alert-message { font-size: 0.9rem; color: #aaa; }
+    .alert-time { font-size: 0.75rem; color: #666; margin-top: 5px; }
+
+    .privacy-toggle { display: flex; gap: 10px; margin-top: 15px; }
+
+    .privacy-option {
+      flex: 1;
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #1E2328;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .privacy-option:hover { border-color: #555; }
+
+    .privacy-option.active {
+      border-color: #5AF5F5;
+      background: rgba(90,245,245,0.1);
+    }
+
+    .privacy-option.active[data-mode="tor"] {
+      border-color: #5AF5F5;
+      background: rgba(90,245,245,0.1);
+    }
+
+    .privacy-option .mode { font-weight: bold; margin-bottom: 5px; }
+    .privacy-option .desc { font-size: 0.8rem; color: #7D7D7D; }
+
+    .proxy-url {
+      background: #050505;
+      border: 1px solid #1E2328;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'SF Mono', Monaco, monospace;
+      margin: 15px 0;
+    }
+
+    .proxy-url code { color: #5AF5F5; font-size: 1.1rem; }
+
+    .running-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #5AF5F5;
+      animation: pulse 1.5s infinite;
+      margin-right: 10px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .tor-status {
+      background: rgba(90,245,245,0.1);
+      border: 1px solid #5AF5F5;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .tor-status h3 {
+      color: #5AF5F5;
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .tor-progress {
+      background: #1E2328;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+
+    .tor-progress-bar {
+      background: #5AF5F5;
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .ip-compare {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+    }
+
+    .ip-box {
+      flex: 1;
+      background: #050505;
+      border: 1px solid #1E2328;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .ip-box .label { font-size: 0.75rem; color: #7D7D7D; }
+    .ip-box .ip { font-family: 'SF Mono', Monaco, monospace; font-size: 1rem; margin-top: 5px; }
+    .ip-box .ip.hidden { color: #5AF5F5; }
+    .ip-box .ip.exposed { color: #FF4757; }
+
+    .architecture {
+      background: #050505;
+      border: 1px solid #1E2328;
+      padding: 20px;
+      border-radius: 8px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 0.85rem;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.4;
+    }
+
+    .rpc-methods {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 30px;
+      color: #666;
+      margin-top: 30px;
+    }
+
+    .footer a { color: #5AF5F5; text-decoration: none; }
+
+    /* Connection Status Bar */
+    .connection-bar {
+      display: flex;
+      gap: 30px;
+      background: #050505;
+      padding: 15px 25px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #1E2328;
+      box-shadow: 0 4px 12px rgba(30, 35, 40, 0.3);
+    }
+
+    .conn-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .conn-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #666;
+    }
+
+    .conn-dot.online {
+      background: #5AF5F5;
+      box-shadow: 0 0 8px #5AF5F5;
+    }
+
+    .conn-dot.connecting {
+      background: #FFB800;
+      animation: blink 1s infinite;
+    }
+
+    .conn-dot.offline {
+      background: #666;
+    }
+
+    .conn-dot.error {
+      background: #FF4757;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .conn-label {
+      color: #7D7D7D;
+      font-size: 0.9rem;
+    }
+
+    .conn-status {
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
+    .conn-status.online { color: #5AF5F5; }
+    .conn-status.connecting { color: #FFB800; }
+    .conn-status.offline { color: #666; }
+    .conn-status.error { color: #FF4757; }
+
+    /* Activity Log */
+    .activity-log {
+      max-height: 300px;
+      overflow-y: auto;
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .activity-empty {
+      color: #666;
+      text-align: center;
+      padding: 30px;
+      font-size: 0.9rem;
+    }
+
+    .activity-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #1E2328;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 0.85rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .activity-item:last-child {
+      border-bottom: none;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; background: rgba(90,245,245,0.1); }
+      to { opacity: 1; background: transparent; }
+    }
+
+    .activity-time {
+      color: #666;
+      width: 80px;
+      flex-shrink: 0;
+    }
+
+    .activity-method {
+      color: #5AF5F5;
+      font-weight: bold;
+      width: 180px;
+      flex-shrink: 0;
+    }
+
+    .activity-status {
+      width: 80px;
+      flex-shrink: 0;
+    }
+
+    .activity-status.success { color: #5AF5F5; }
+    .activity-status.error { color: #FF4757; }
+    .activity-status.pending { color: #FFB800; }
+
+    .activity-latency {
+      color: #7D7D7D;
+      width: 80px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    .activity-details {
+      color: #666;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-left: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PrivacyRPC</h1>
+      <p class="subtitle">Privacy-First Solana RPC Protection</p>
+      <span class="badge live-badge">LIVE</span>
+    </header>
+
+    <!-- Connection Status Bar -->
+    <div class="connection-bar" id="connectionBar">
+      <div class="conn-item">
+        <span class="conn-dot" id="proxyDot"></span>
+        <span class="conn-label">Proxy:</span>
+        <span class="conn-status" id="proxyStatus">Offline</span>
+      </div>
+      <div class="conn-item">
+        <span class="conn-dot" id="torDot"></span>
+        <span class="conn-label">Tor:</span>
+        <span class="conn-status" id="torStatusText">Disabled</span>
+      </div>
+      <div class="conn-item">
+        <span class="conn-dot" id="rpcDot"></span>
+        <span class="conn-label">RPC:</span>
+        <span class="conn-status" id="rpcStatus">Not Connected</span>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="value" id="requestCount">0</div>
+        <div class="label">Requests</div>
+      </div>
+      <div class="status-item">
+        <div class="value" id="avgLatency">0ms</div>
+        <div class="label">Avg Latency</div>
+      </div>
+      <div class="status-item danger">
+        <div class="value" id="blockedCount">0</div>
+        <div class="label">Blocked</div>
+      </div>
+      <div class="status-item warning">
+        <div class="value" id="phishingCount">0</div>
+        <div class="label">Phishing</div>
+      </div>
+      <div class="status-item tor">
+        <div class="value" id="privacyMode">DIRECT</div>
+        <div class="label">Privacy Mode</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- RPC Proxy Control -->
+      <div class="card">
+        <h2>RPC Proxy</h2>
+
+        <div class="input-group">
+          <label>Network</label>
+          <select id="networkSelect">
+            <option value="mainnet">Mainnet</option>
+            <option value="devnet">Devnet</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>RPC Provider</label>
+          <select id="rpcSelect">
+            <option value="public">Solana Public RPC (no key needed)</option>
+            <option value="helius">Helius</option>
+            <option value="quicknode">QuickNode</option>
+            <option value="custom">Custom RPC URL</option>
+          </select>
+        </div>
+
+        <div class="input-group" id="apiKeyGroup" style="display:none;">
+          <label id="apiKeyLabel">API Key</label>
+          <input type="text" id="apiKeyInput" placeholder="Enter your API key">
+        </div>
+
+        <div class="input-group">
+          <label>Privacy Mode</label>
+          <select id="privacySelect">
+            <option value="none">Direct (fastest)</option>
+            <option value="tor">Tor (anonymous)</option>
+          </select>
+        </div>
+
+        <div class="button-group">
+          <button id="startProxy">Start Proxy</button>
+          <button id="stopProxy" class="danger" disabled>Stop Proxy</button>
+        </div>
+
+        <div class="proxy-url" id="proxyUrlDisplay" style="display:none;">
+          <div>
+            <span class="running-indicator"></span>
+            <strong>Proxy Running</strong>
+          </div>
+          <div style="margin-top:10px;">
+            Local: <code>http://127.0.0.1:8899</code>
+          </div>
+          <div style="margin-top:10px;">
+            <label style="font-size:0.85rem; color:#7D7D7D;">Tunnel URL (for Backpack/external wallets):</label>
+            <input type="text" id="tunnelUrl" placeholder="https://your-tunnel.loca.lt" style="width:100%; margin-top:5px;">
+            <div style="margin-top:5px; font-size:0.8rem; color:#5AF5F5;" id="tunnelStatus"></div>
+          </div>
+          <div style="margin-top:5px; color:#7D7D7D; font-size:0.85rem;">
+            RPC: <span id="connectedRpc">-</span>
+          </div>
+        </div>
+
+        <!-- Tor Status -->
+        <div class="tor-status" id="torStatus" style="display:none;">
+          <h3>Tor Status: <span id="torConnectionStatus" style="color:#FFB800;">Connecting...</span></h3>
+          <div>Bootstrap: <span id="torBootstrap">0%</span></div>
+          <div class="tor-progress">
+            <div class="tor-progress-bar" id="torProgressBar" style="width:0%"></div>
+          </div>
+          <div class="ip-compare">
+            <div class="ip-box">
+              <div class="label">Your Real IP (hidden from RPC)</div>
+              <div class="ip exposed" id="realIp">-</div>
+            </div>
+            <div class="ip-box">
+              <div class="label">Tor Exit IP (RPC sees this)</div>
+              <div class="ip hidden" id="exitIp">-</div>
+            </div>
+          </div>
+          <button id="newCircuit" class="tor" style="margin-top:15px; width:100%;">
+            New Circuit (Change IP)
+          </button>
+        </div>
+      </div>
+
+      <!-- Direct Browser Test (No Tunnel Needed) -->
+      <div class="card" style="border: 2px solid #5AF5F5;">
+        <h2 style="color:#5AF5F5;">Direct Browser Test (No Tunnel)</h2>
+        <p style="color:#7D7D7D; font-size:0.85rem; margin-bottom:15px;">
+          Test the proxy directly from your browser. This proves it works locally before setting up tunnels.
+        </p>
+
+        <div class="rpc-methods">
+          <button onclick="directProxyTest('getSlot')">Test getSlot</button>
+          <button onclick="directProxyTest('getBlockHeight')">Test getBlockHeight</button>
+          <button onclick="directProxyTest('getHealth')">Test getHealth</button>
+          <button onclick="directProxyTest('getVersion')">Test getVersion</button>
+        </div>
+
+        <div style="margin-top:15px;">
+          <label style="color:#7D7D7D; font-size:0.85rem;">Test Mint/Account Lookup:</label>
+          <div style="display:flex; gap:10px; margin-top:5px;">
+            <input type="text" id="mintAddress" placeholder="Enter mint or account address" style="flex:1;">
+            <button style="background:#FFB800; color:#000;" onclick="testGetMint()">Get Mint</button>
+          </div>
+          <div style="margin-top:5px;">
+            <button class="secondary" style="font-size:0.75rem;" onclick="testMint('So11111111111111111111111111111111111111112')">SOL (Native)</button>
+            <button class="secondary" style="font-size:0.75rem;" onclick="testMint('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')">USDC</button>
+            <button class="secondary" style="font-size:0.75rem;" onclick="testMint('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')">USDT</button>
+          </div>
+        </div>
+
+        <div id="directTestResult" style="margin-top:15px;">
+          <div style="color:#7D7D7D; font-size:0.85rem;">Direct Test Result:</div>
+          <div style="background:#050505; border:1px solid #1E2328; padding:10px; border-radius:6px; margin-top:5px; font-family:'SF Mono', Monaco, monospace; font-size:0.85rem; max-height:200px; overflow:auto;">
+            <pre id="directTestContent">Click a test button above to test the proxy directly...</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live RPC Testing (via WebSocket) -->
+      <div class="card">
+        <h2>Live RPC Testing (via Server)</h2>
+        <p style="color:#7D7D7D; font-size:0.85rem; margin-bottom:15px;">
+          Send real Solana RPC requests through the proxy via WebSocket:
+        </p>
+
+        <div class="rpc-methods">
+          <button class="secondary" onclick="sendRpc('getSlot')">getSlot</button>
+          <button class="secondary" onclick="sendRpc('getBlockHeight')">getBlockHeight</button>
+          <button class="secondary" onclick="sendRpc('getHealth')">getHealth</button>
+          <button class="secondary" onclick="sendRpc('getVersion')">getVersion</button>
+          <button class="secondary" onclick="sendRpc('getEpochInfo')">getEpochInfo</button>
+          <button class="secondary" onclick="sendRpc('getSupply')">getSupply</button>
+        </div>
+
+        <div id="rpcResult" style="margin-top:15px; display:none;">
+          <div style="color:#7D7D7D; font-size:0.85rem;">Last Response:</div>
+          <div style="background:#050505; border:1px solid #1E2328; padding:10px; border-radius:6px; margin-top:5px; font-family:'SF Mono', Monaco, monospace; font-size:0.85rem; max-height:150px; overflow:auto;">
+            <pre id="rpcResultContent"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phishing Detection -->
+      <div class="card">
+        <h2>Phishing Detection</h2>
+
+        <div class="input-group">
+          <label>Check a domain (100% local - no API calls)</label>
+          <input type="text" id="phishingInput" placeholder="e.g., phantom.app or phantóm.app">
+        </div>
+
+        <div class="button-group">
+          <button id="checkPhishing">Check Domain</button>
+        </div>
+
+        <div style="margin-top:15px;">
+          <p style="color:#7D7D7D; font-size:0.85rem; margin-bottom:10px;">Try these:</p>
+          <div class="button-group">
+            <button class="secondary" onclick="checkDomain('phantom.app')">phantom.app (legit)</button>
+            <button class="secondary" onclick="checkDomain('phantom.app')">phantom.app (homograph)</button>
+            <button class="secondary" onclick="checkDomain('phantom-wallet.app')">phantom-wallet.app</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MITM Detection -->
+      <div class="card">
+        <h2>MITM Detection</h2>
+        <p style="color:#7D7D7D; font-size:0.85rem; margin-bottom:15px;">
+          Check RPC endpoints for man-in-the-middle attacks:
+        </p>
+
+        <div class="input-group">
+          <label>Hostname to check</label>
+          <input type="text" id="mitmInput" placeholder="e.g., api.mainnet-beta.solana.com">
+        </div>
+
+        <div class="button-group">
+          <button id="checkMitm">Check for MITM</button>
+          <button class="secondary" onclick="checkMitmHost('api.mainnet-beta.solana.com')">Check Solana</button>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="card" style="grid-column: span 2;">
+        <h2>RPC Activity Log</h2>
+        <p style="color:#7D7D7D; font-size:0.85rem; margin-bottom:10px;">
+          Live requests flowing through the proxy from your wallet:
+        </p>
+        <div class="activity-log" id="activityLog">
+          <div class="activity-empty" id="activityEmpty">No activity yet. Start proxy and connect your wallet using the tunnel URL above.</div>
+        </div>
+      </div>
+
+      <!-- Alerts -->
+      <div class="card" style="grid-column: span 2;">
+        <h2>Live Security Alerts</h2>
+        <div class="alerts" id="alertsContainer">
+          <div class="alert info">
+            <div class="alert-title">Welcome to PrivacyRPC Live Demo</div>
+            <div class="alert-message">This demo uses real Tor routing and makes actual Solana RPC requests. Start the proxy to begin.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>PrivacyRPC SDK - Privacy-First Solana RPC Protection with Embedded Tor</p>
+    </footer>
+  </div>
+
+  <script>
+    const ws = new WebSocket(`ws://${window.location.host}`);
+    let state = { stats: { requests: 0, blocked: 0, phishingDetected: 0, avgLatency: 0 } };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+
+      switch (msg.type) {
+        case 'state':
+          state = msg.data;
+          updateUI();
+          break;
+        case 'alert':
+          addAlertToUI(msg.data);
+          break;
+        case 'torProgress':
+          updateTorProgress(msg.data);
+          break;
+        case 'rpcResponse':
+          showRpcResult(msg.data);
+          break;
+        case 'activity':
+          addActivityItem(msg.data);
+          break;
+      }
+    };
+
+    function addActivityItem(data) {
+      const container = document.getElementById('activityLog');
+
+      // Remove empty message if present
+      const emptyMsg = container.querySelector('.activity-empty');
+      if (emptyMsg) emptyMsg.remove();
+
+      const item = document.createElement('div');
+      item.className = 'activity-item';
+
+      const time = new Date(data.timestamp).toLocaleTimeString();
+      const statusClass = data.success ? 'success' : (data.error ? 'error' : 'pending');
+      const statusText = data.success ? 'OK' : (data.error ? 'ERR' : '...');
+
+      item.innerHTML = `
+        <span class="activity-time">${time}</span>
+        <span class="activity-method">${data.method || 'unknown'}</span>
+        <span class="activity-status ${statusClass}">${statusText}</span>
+        <span class="activity-latency">${data.latency ? data.latency + 'ms' : '-'}</span>
+        <span class="activity-details">${data.details || ''}</span>
+      `;
+
+      container.insertBefore(item, container.firstChild);
+
+      // Keep only last 50 items
+      while (container.children.length > 50) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('requestCount').textContent = state.stats.requests;
+      document.getElementById('avgLatency').textContent = state.stats.avgLatency + 'ms';
+      document.getElementById('blockedCount').textContent = state.stats.blocked;
+      document.getElementById('phishingCount').textContent = state.stats.phishingDetected;
+      document.getElementById('privacyMode').textContent = (state.privacyMode || 'none').toUpperCase();
+
+      document.getElementById('startProxy').disabled = state.proxyRunning;
+      document.getElementById('stopProxy').disabled = !state.proxyRunning;
+      document.getElementById('proxyUrlDisplay').style.display = state.proxyRunning ? 'block' : 'none';
+      document.getElementById('connectedRpc').textContent = state.connectedRpc || '-';
+
+      // Update Connection Status Bar
+      updateConnectionBar();
+
+      // Tor status panel
+      const torStatus = document.getElementById('torStatus');
+      if (state.privacyMode === 'tor') {
+        torStatus.style.display = 'block';
+        document.getElementById('torBootstrap').textContent = state.torBootstrap + '%';
+        document.getElementById('torProgressBar').style.width = state.torBootstrap + '%';
+        document.getElementById('realIp').textContent = state.realIp || '-';
+        document.getElementById('exitIp').textContent = state.exitIp || 'connecting...';
+
+        // Update Tor connection status in panel
+        const statusEl = document.getElementById('torConnectionStatus');
+        if (state.torBootstrap === 100 && state.exitIp) {
+          statusEl.textContent = 'CONNECTED';
+          statusEl.style.color = '#5AF5F5';
+        } else if (state.torBootstrap > 0) {
+          statusEl.textContent = 'Bootstrapping ' + state.torBootstrap + '%';
+          statusEl.style.color = '#FFB800';
+        } else {
+          statusEl.textContent = 'Starting...';
+          statusEl.style.color = '#FFB800';
+        }
+      } else {
+        torStatus.style.display = 'none';
+      }
+    }
+
+    function updateConnectionBar() {
+      const proxyDot = document.getElementById('proxyDot');
+      const proxyStatus = document.getElementById('proxyStatus');
+      const torDot = document.getElementById('torDot');
+      const torStatusText = document.getElementById('torStatusText');
+      const rpcDot = document.getElementById('rpcDot');
+      const rpcStatus = document.getElementById('rpcStatus');
+
+      // Proxy status
+      if (state.proxyRunning) {
+        proxyDot.className = 'conn-dot online';
+        proxyStatus.className = 'conn-status online';
+        proxyStatus.textContent = 'Running on :8899';
+      } else {
+        proxyDot.className = 'conn-dot offline';
+        proxyStatus.className = 'conn-status offline';
+        proxyStatus.textContent = 'Offline';
+      }
+
+      // Tor status
+      if (state.privacyMode === 'tor') {
+        if (state.torBootstrap === 100 && state.exitIp) {
+          torDot.className = 'conn-dot online';
+          torStatusText.className = 'conn-status online';
+          torStatusText.textContent = 'Connected (' + state.exitIp + ')';
+        } else if (state.torBootstrap > 0) {
+          torDot.className = 'conn-dot connecting';
+          torStatusText.className = 'conn-status connecting';
+          torStatusText.textContent = 'Bootstrapping ' + state.torBootstrap + '%';
+        } else if (state.proxyRunning) {
+          torDot.className = 'conn-dot connecting';
+          torStatusText.className = 'conn-status connecting';
+          torStatusText.textContent = 'Starting...';
+        } else {
+          torDot.className = 'conn-dot offline';
+          torStatusText.className = 'conn-status offline';
+          torStatusText.textContent = 'Disabled';
+        }
+      } else {
+        torDot.className = 'conn-dot offline';
+        torStatusText.className = 'conn-status offline';
+        torStatusText.textContent = 'Disabled';
+      }
+
+      // RPC status
+      if (state.proxyRunning && state.connectedRpc) {
+        rpcDot.className = 'conn-dot online';
+        rpcStatus.className = 'conn-status online';
+        // Show shortened RPC name
+        let rpcName = state.connectedRpc;
+        if (rpcName.includes('helius')) rpcName = 'Helius';
+        else if (rpcName.includes('quicknode')) rpcName = 'QuickNode';
+        else if (rpcName.includes('devnet')) rpcName = 'Solana Devnet';
+        else if (rpcName.includes('mainnet')) rpcName = 'Solana Mainnet';
+        else rpcName = 'Connected';
+        rpcStatus.textContent = rpcName;
+      } else {
+        rpcDot.className = 'conn-dot offline';
+        rpcStatus.className = 'conn-status offline';
+        rpcStatus.textContent = 'Not Connected';
+      }
+    }
+
+    function updateTorProgress(data) {
+      state.torBootstrap = data.progress;
+      document.getElementById('torBootstrap').textContent = data.progress + '%';
+      document.getElementById('torProgressBar').style.width = data.progress + '%';
+
+      // Update connection bar Tor status
+      const torDot = document.getElementById('torDot');
+      const torStatusText = document.getElementById('torStatusText');
+
+      if (data.progress === 100) {
+        torDot.className = 'conn-dot online';
+        torStatusText.className = 'conn-status online';
+        torStatusText.textContent = 'Connected';
+      } else {
+        torDot.className = 'conn-dot connecting';
+        torStatusText.className = 'conn-status connecting';
+        torStatusText.textContent = 'Bootstrapping ' + data.progress + '% - ' + data.summary;
+      }
+
+      // Update panel status
+      const statusEl = document.getElementById('torConnectionStatus');
+      if (statusEl) {
+        if (data.progress === 100) {
+          statusEl.textContent = 'CONNECTED';
+          statusEl.style.color = '#5AF5F5';
+        } else {
+          statusEl.textContent = 'Bootstrapping ' + data.progress + '%';
+          statusEl.style.color = '#FFB800';
+        }
+      }
+    }
+
+    function showRpcResult(data) {
+      document.getElementById('rpcResult').style.display = 'block';
+      const content = data.error
+        ? `Error: ${data.error.message}`
+        : JSON.stringify(data.result, null, 2);
+      document.getElementById('rpcResultContent').textContent =
+        `${data.method} (${data.latency}ms):\n${content.slice(0, 500)}`;
+    }
+
+    function addAlertToUI(alert) {
+      const container = document.getElementById('alertsContainer');
+      const div = document.createElement('div');
+      div.className = `alert ${alert.level}`;
+      div.innerHTML = `
+        <div class="alert-title">${alert.title}</div>
+        <div class="alert-message">${alert.message}</div>
+        <div class="alert-time">${new Date(alert.timestamp).toLocaleTimeString()}</div>
+      `;
+      container.insertBefore(div, container.firstChild);
+      while (container.children.length > 25) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    function send(action, data = {}) {
+      ws.send(JSON.stringify({ action, ...data }));
+    }
+
+    function checkDomain(domain) {
+      document.getElementById('phishingInput').value = domain;
+      send('checkPhishing', { domain });
+    }
+
+    function sendRpc(method) {
+      send('sendRpcRequest', { method });
+    }
+
+    // Direct browser-to-proxy test (no tunnel needed)
+    async function directProxyTest(method) {
+      const resultEl = document.getElementById('directTestContent');
+      resultEl.textContent = `Testing ${method}...\n\nCalling http://127.0.0.1:8899 directly from browser...`;
+
+      const startTime = Date.now();
+
+      try {
+        const response = await fetch('http://127.0.0.1:8899', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Date.now(),
+            method: method,
+            params: []
+          })
+        });
+
+        const data = await response.json();
+        const latency = Date.now() - startTime;
+
+        if (data.error) {
+          resultEl.textContent = `ERROR (${latency}ms):\n\n${JSON.stringify(data.error, null, 2)}`;
+          resultEl.style.color = '#FF4757';
+        } else {
+          resultEl.textContent = `SUCCESS (${latency}ms):\n\n${method}: ${JSON.stringify(data.result, null, 2)}`;
+          resultEl.style.color = '#5AF5F5';
+        }
+      } catch (err) {
+        resultEl.textContent = `FAILED: ${err.message}\n\nMake sure the proxy is running!\n\nTip: If you see a CORS error, the proxy might not be started.`;
+        resultEl.style.color = '#FF4757';
+      }
+    }
+
+    // Test mint address
+    function testMint(address) {
+      document.getElementById('mintAddress').value = address;
+      testGetMint();
+    }
+
+    // Get mint/account info
+    async function testGetMint() {
+      const address = document.getElementById('mintAddress').value.trim();
+      const resultEl = document.getElementById('directTestContent');
+
+      if (!address) {
+        resultEl.textContent = 'Enter a mint or account address to test';
+        resultEl.style.color = '#FFB800';
+        return;
+      }
+
+      resultEl.textContent = `Fetching account info for:\n${address}\n\nCalling getAccountInfo...`;
+
+      const startTime = Date.now();
+
+      try {
+        const response = await fetch('http://127.0.0.1:8899', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Date.now(),
+            method: 'getAccountInfo',
+            params: [address, { encoding: 'jsonParsed' }]
+          })
+        });
+
+        const data = await response.json();
+        const latency = Date.now() - startTime;
+
+        if (data.error) {
+          resultEl.textContent = `ERROR (${latency}ms):\n\n${JSON.stringify(data.error, null, 2)}`;
+          resultEl.style.color = '#FF4757';
+        } else if (data.result === null || data.result.value === null) {
+          resultEl.textContent = `ACCOUNT NOT FOUND (${latency}ms):\n\nAddress: ${address}\n\nThis account does not exist on the current network (devnet/mainnet).\n\nThis could cause "Mint Unavailable" errors!`;
+          resultEl.style.color = '#FFB800';
+        } else {
+          const info = data.result.value;
+          let details = `SUCCESS (${latency}ms):\n\nAddress: ${address}\n`;
+          details += `Owner: ${info.owner}\n`;
+          details += `Lamports: ${info.lamports}\n`;
+          details += `Executable: ${info.executable}\n`;
+
+          if (info.data?.parsed) {
+            details += `\nParsed Data:\n${JSON.stringify(info.data.parsed, null, 2)}`;
+          }
+
+          resultEl.textContent = details;
+          resultEl.style.color = '#5AF5F5';
+        }
+      } catch (err) {
+        resultEl.textContent = `FAILED: ${err.message}`;
+        resultEl.style.color = '#FF4757';
+      }
+    }
+
+    function checkMitmHost(hostname) {
+      document.getElementById('mitmInput').value = hostname;
+      send('checkMitm', { hostname });
+    }
+
+    // Show/hide API key input based on provider selection
+    function updateApiKeyField() {
+      const provider = document.getElementById('rpcSelect').value;
+      const apiKeyGroup = document.getElementById('apiKeyGroup');
+      const apiKeyInput = document.getElementById('apiKeyInput');
+      const apiKeyLabel = document.getElementById('apiKeyLabel');
+
+      if (provider === 'public') {
+        apiKeyGroup.style.display = 'none';
+      } else {
+        apiKeyGroup.style.display = 'block';
+        if (provider === 'helius') {
+          apiKeyLabel.textContent = 'Helius API Key';
+          apiKeyInput.placeholder = 'Enter your Helius API key';
+        } else if (provider === 'quicknode') {
+          apiKeyLabel.textContent = 'QuickNode Endpoint URL';
+          apiKeyInput.placeholder = 'https://your-endpoint.quiknode.pro/...';
+        } else {
+          apiKeyLabel.textContent = 'Full RPC URL';
+          apiKeyInput.placeholder = 'https://your-rpc-endpoint.com';
+        }
+      }
+    }
+
+    document.getElementById('rpcSelect').onchange = updateApiKeyField;
+
+    // Run on page load to show/hide based on initial selection
+    updateApiKeyField();
+
+    // Build RPC URL from selections
+    function buildRpcUrl() {
+      const network = document.getElementById('networkSelect').value;
+      const provider = document.getElementById('rpcSelect').value;
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+      if (provider === 'public') {
+        return network === 'mainnet'
+          ? 'https://api.mainnet-beta.solana.com'
+          : 'https://api.devnet.solana.com';
+      } else if (provider === 'helius') {
+        const base = network === 'mainnet'
+          ? 'https://mainnet.helius-rpc.com'
+          : 'https://devnet.helius-rpc.com';
+        return `${base}/?api-key=${apiKey}`;
+      } else if (provider === 'quicknode' || provider === 'custom') {
+        return apiKey;
+      }
+      return 'https://api.mainnet-beta.solana.com';
+    }
+
+    // Event listeners
+    document.getElementById('startProxy').onclick = () => {
+      const rpc = buildRpcUrl();
+      const privacy = document.getElementById('privacySelect').value;
+      send('startProxy', { rpc, privacy });
+    };
+
+    document.getElementById('stopProxy').onclick = () => send('stopProxy');
+
+    document.getElementById('checkPhishing').onclick = () => {
+      const domain = document.getElementById('phishingInput').value;
+      if (domain) send('checkPhishing', { domain });
+    };
+
+    document.getElementById('phishingInput').onkeypress = (e) => {
+      if (e.key === 'Enter') {
+        const domain = e.target.value;
+        if (domain) send('checkPhishing', { domain });
+      }
+    };
+
+    document.getElementById('checkMitm').onclick = () => {
+      const hostname = document.getElementById('mitmInput').value;
+      send('checkMitm', { hostname: hostname || null });
+    };
+
+    document.getElementById('newCircuit').onclick = () => send('newCircuit');
+
+    // Tunnel URL handling
+    const tunnelInput = document.getElementById('tunnelUrl');
+    const savedTunnel = localStorage.getItem('tunnelUrl');
+    if (savedTunnel) {
+      tunnelInput.value = savedTunnel;
+      updateTunnelStatus();
+    }
+
+    tunnelInput.oninput = () => {
+      localStorage.setItem('tunnelUrl', tunnelInput.value);
+      updateTunnelStatus();
+    };
+
+    function updateTunnelStatus() {
+      const url = tunnelInput.value;
+      const statusEl = document.getElementById('tunnelStatus');
+      const activityEmpty = document.getElementById('activityEmpty');
+
+      if (url) {
+        statusEl.textContent = 'Connect wallet to: ' + url;
+        if (activityEmpty) {
+          activityEmpty.textContent = 'No activity yet. Connect your wallet to ' + url;
+        }
+      } else {
+        statusEl.textContent = 'Enter your localtunnel/ngrok URL above';
+        if (activityEmpty) {
+          activityEmpty.textContent = 'No activity yet. Start proxy and enter tunnel URL above.';
+        }
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrivacyRPC</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #ffffff;
+      min-height: 100vh;
+      user-select: none;
+    }
+
+    /* Dark Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #1E2328;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2A3038;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .logo-img {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+    }
+
+    .title-section h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .title-section p {
+      font-size: 12px;
+      color: #7D7D7D;
+    }
+
+    /* Status Card */
+    .status-card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .status-card.active {
+      border-color: #1E4040;
+      background: linear-gradient(135deg, #050505 0%, #0A1A1A 100%);
+    }
+
+    .status-card.inactive {
+      border-color: #3D1A1A;
+    }
+
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #1E2328;
+    }
+
+    .status-dot.active {
+      background: #5AF5F5;
+      box-shadow: 0 0 12px #5AF5F5;
+    }
+
+    .status-dot.inactive {
+      background: #FF4757;
+    }
+
+    .status-text {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .port-badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      background: #1E2328;
+      border-radius: 6px;
+      color: #7D7D7D;
+      font-family: monospace;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 12px;
+      background: #000000;
+      border: 1px solid #1E2328;
+      border-radius: 10px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: #5AF5F5;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      padding: 14px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      background: #5AF5F5;
+      color: #000000;
+    }
+
+    .btn-primary:hover {
+      background: #7FF7F7;
+      box-shadow: 0 0 20px rgba(90, 245, 245, 0.4);
+    }
+
+    .btn-danger {
+      background: #FF4757;
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: #ff6b7a;
+    }
+
+    .btn-secondary {
+      background: #1E2328;
+      color: #7D7D7D;
+    }
+
+    .btn-secondary:hover {
+      background: #2A3038;
+      color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Settings */
+    .settings-card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .settings-title {
+      font-size: 12px;
+      color: #7D7D7D;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-info h4 {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .setting-info p {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .setting-input {
+      width: 100px;
+      padding: 8px 12px;
+      background: #000;
+      border: 1px solid #1E2328;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      text-align: center;
+      font-family: monospace;
+    }
+
+    .setting-input:focus {
+      outline: none;
+      border-color: #5AF5F5;
+    }
+
+    /* Toggle */
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #1E2328;
+      border-radius: 24px;
+      transition: 0.2s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #7D7D7D;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    input:checked + .toggle-slider {
+      background: #0D3D3D;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+      background: #5AF5F5;
+      box-shadow: 0 0 8px #5AF5F5;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: auto;
+      text-align: center;
+      padding-top: 16px;
+      border-top: 1px solid #1E2328;
+    }
+
+    .footer p {
+      font-size: 11px;
+      color: #7D7D7D;
+    }
+
+    .footer a {
+      color: #5AF5F5;
+      text-decoration: none;
+    }
+
+    /* Logs */
+    .logs-card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      flex: 1;
+      min-height: 120px;
+      overflow-y: auto;
+    }
+
+    /* Splash Screen */
+    .splash-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #000000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+      overflow: hidden;
+    }
+
+    body.splash-active {
+      overflow: hidden;
+    }
+
+    .splash-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-logo {
+      width: 120px;
+      height: 120px;
+      border-radius: 24px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .splash-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 20px;
+      letter-spacing: -1px;
+    }
+
+    .splash-subtitle {
+      font-size: 14px;
+      color: #7D7D7D;
+      margin-top: 8px;
+    }
+
+    .splash-loader {
+      margin-top: 30px;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #1E2328;
+      border-top-color: #5AF5F5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(90, 245, 245, 0); }
+      50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(90, 245, 245, 0.3); }
+    }
+
+    .log-item {
+      font-size: 11px;
+      font-family: monospace;
+      color: #7D7D7D;
+      padding: 4px 0;
+      border-bottom: 1px solid #1E2328;
+    }
+
+    .log-item:last-child {
+      border-bottom: none;
+    }
+
+    .log-item.success {
+      color: #5AF5F5;
+    }
+
+    .log-item.error {
+      color: #FF4757;
+    }
+
+    /* Step Numbers */
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      background: #1E2328;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 8px;
+      color: #7D7D7D;
+    }
+
+    .step-number.complete {
+      background: #5AF5F5;
+      color: #000;
+    }
+
+    .step-description {
+      font-size: 12px;
+      color: #7D7D7D;
+      margin-top: 4px;
+    }
+
+    .step-content {
+      padding-left: 28px;
+    }
+
+    #step1Card.complete,
+    #step2Card.complete {
+      border-color: #1E4040;
+      background: linear-gradient(135deg, #050505 0%, #0A1A1A 100%);
+    }
+  </style>
+</head>
+<body class="splash-active">
+  <script>
+    // Quick splash - just 500ms to show loading feedback
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        var splash = document.getElementById('splashScreen');
+        if (splash) {
+          splash.classList.add('fade-out');
+          document.body.classList.remove('splash-active');
+          setTimeout(function() { splash.style.display = 'none'; }, 200);
+        }
+      }, 500);
+    });
+  </script>
+
+  <!-- Quick Splash Screen -->
+  <div class="splash-screen" id="splashScreen">
+    <img src="icon.png" class="splash-logo" alt="PrivacyRPC">
+    <div class="splash-title">PrivacyRPC</div>
+    <div class="splash-loader"></div>
+  </div>
+
+  <div class="app">
+    <div class="header">
+      <img src="icon.png" class="logo-img" alt="PrivacyRPC" style="width: 48px; height: 48px; border-radius: 12px;">
+      <div class="title-section">
+        <h1>PrivacyRPC</h1>
+        <p>Solana RPC Privacy Proxy</p>
+      </div>
+    </div>
+
+    <div class="status-card" id="statusCard">
+      <div class="status-header">
+        <div class="status-indicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Stopped</span>
+        </div>
+        <span class="port-badge" id="portBadge">:8899</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="statRequests">0</div>
+          <div class="stat-label">Requests</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="statBytes">0</div>
+          <div class="stat-label">KB Transferred</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="statUptime">0s</div>
+          <div class="stat-label">Uptime</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Getting Started Steps -->
+    <div class="settings-card" id="step1Card">
+      <div class="settings-title">
+        <span class="step-number" id="step1Number">1</span> Start the Proxy Server
+      </div>
+      <div class="step-content">
+        <p class="step-description">Enable privacy protection for your Solana transactions</p>
+        <div class="controls" style="margin-top: 12px; margin-bottom: 0;">
+          <button class="btn btn-primary" id="startBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Start Proxy
+          </button>
+          <button class="btn btn-danger" id="stopBtn" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <rect x="6" y="6" width="12" height="12"/>
+            </svg>
+            Stop Proxy
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card" id="step2Card">
+      <div class="settings-title">
+        <span class="step-number" id="step2Number">2</span> Install Browser Extension
+      </div>
+      <div class="step-content">
+        <p class="step-description">Connect the Chrome extension to this app</p>
+        <button class="btn btn-secondary" id="installHostBtn" style="margin-top: 12px; width: 100%;">Install</button>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">Settings</div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <h4>Proxy Port</h4>
+          <p>Local port for the proxy server</p>
+        </div>
+        <input type="number" class="setting-input" id="portInput" value="8899" min="1024" max="65535">
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <h4>Tor Routing</h4>
+          <p>Route traffic through Tor network</p>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="torToggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="logs-card" id="logsCard">
+      <div class="log-item">Ready to start proxy server...</div>
+    </div>
+
+    <div class="footer">
+      <p>PrivacyRPC v1.0.0 | <a href="https://github.com/privacyrpc" target="_blank">GitHub</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Tauri API
+    const invoke = window.__TAURI__.core.invoke;
+
+    // DOM Elements
+    const statusCard = document.getElementById('statusCard');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const portBadge = document.getElementById('portBadge');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const portInput = document.getElementById('portInput');
+    const torToggle = document.getElementById('torToggle');
+    const installHostBtn = document.getElementById('installHostBtn');
+    const logsCard = document.getElementById('logsCard');
+    const statRequests = document.getElementById('statRequests');
+    const statBytes = document.getElementById('statBytes');
+    const statUptime = document.getElementById('statUptime');
+    const step1Card = document.getElementById('step1Card');
+    const step2Card = document.getElementById('step2Card');
+    const step1Number = document.getElementById('step1Number');
+    const step2Number = document.getElementById('step2Number');
+
+    let isRunning = false;
+
+    // Logging
+    function log(message, type = 'info') {
+      const item = document.createElement('div');
+      item.className = `log-item ${type}`;
+      item.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logsCard.insertBefore(item, logsCard.firstChild);
+
+      // Keep only last 50 logs
+      while (logsCard.children.length > 50) {
+        logsCard.removeChild(logsCard.lastChild);
+      }
+    }
+
+    // Update UI based on status
+    function updateUI(running) {
+      isRunning = running;
+
+      if (running) {
+        statusCard.classList.add('active');
+        statusCard.classList.remove('inactive');
+        statusDot.classList.add('active');
+        statusDot.classList.remove('inactive');
+        statusText.textContent = 'Running';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'flex';
+        portInput.disabled = true;
+        // Mark step 1 complete
+        step1Card.classList.add('complete');
+        step1Number.classList.add('complete');
+        step1Number.textContent = '✓';
+      } else {
+        statusCard.classList.remove('active');
+        statusCard.classList.add('inactive');
+        statusDot.classList.remove('active');
+        statusDot.classList.add('inactive');
+        statusText.textContent = 'Stopped';
+        startBtn.style.display = 'flex';
+        stopBtn.style.display = 'none';
+        portInput.disabled = false;
+        // Reset step 1
+        step1Card.classList.remove('complete');
+        step1Number.classList.remove('complete');
+        step1Number.textContent = '1';
+      }
+    }
+
+    // Start proxy
+    async function startProxy() {
+      try {
+        startBtn.disabled = true;
+        log('Starting proxy server...');
+
+        const port = parseInt(portInput.value);
+        await invoke('set_port', { port });
+        await invoke('start_proxy');
+
+        log('Proxy server started on port ' + port, 'success');
+        updateUI(true);
+      } catch (e) {
+        log('Failed to start proxy: ' + e, 'error');
+      } finally {
+        startBtn.disabled = false;
+      }
+    }
+
+    // Stop proxy
+    async function stopProxy() {
+      try {
+        stopBtn.disabled = true;
+        log('Stopping proxy server...');
+
+        await invoke('stop_proxy');
+
+        log('Proxy server stopped', 'success');
+        updateUI(false);
+      } catch (e) {
+        log('Failed to stop proxy: ' + e, 'error');
+      } finally {
+        stopBtn.disabled = false;
+      }
+    }
+
+    // Install native messaging host
+    async function installNativeHost() {
+      try {
+        log('Installing native messaging host...');
+        const path = await invoke('install_native_host');
+        log('Native host installed at: ' + path, 'success');
+        installHostBtn.textContent = 'Installed';
+        installHostBtn.disabled = true;
+        // Mark step 2 complete
+        step2Card.classList.add('complete');
+        step2Number.classList.add('complete');
+        step2Number.textContent = '✓';
+      } catch (e) {
+        log('Failed to install native host: ' + e, 'error');
+      }
+    }
+
+    // Get status periodically
+    async function refreshStatus() {
+      try {
+        const status = await invoke('get_status');
+        updateUI(status.running);
+        portBadge.textContent = ':' + status.port;
+        statRequests.textContent = status.stats.requests_proxied;
+        statBytes.textContent = Math.round(status.stats.bytes_transferred / 1024);
+        statUptime.textContent = status.stats.uptime_seconds + 's';
+      } catch (e) {
+        // Ignore errors during refresh
+      }
+    }
+
+    // Event listeners
+    startBtn.addEventListener('click', startProxy);
+    stopBtn.addEventListener('click', stopProxy);
+    installHostBtn.addEventListener('click', installNativeHost);
+
+    portInput.addEventListener('change', () => {
+      portBadge.textContent = ':' + portInput.value;
+    });
+
+    torToggle.addEventListener('change', async () => {
+      if (torToggle.checked) {
+        await invoke('enable_tor');
+        log('Tor routing enabled', 'success');
+      } else {
+        await invoke('disable_tor');
+        log('Tor routing disabled');
+      }
+    });
+
+    // Quick background setup (non-blocking)
+    async function backgroundSetup() {
+      try {
+        // Install native messaging host silently
+        await invoke('install_native_host');
+        installHostBtn.textContent = 'Installed';
+        installHostBtn.disabled = true;
+        step2Card.classList.add('complete');
+        step2Number.classList.add('complete');
+        step2Number.textContent = '✓';
+        log('Browser integration ready', 'success');
+      } catch (e) {
+        // Silent fail - user can click install manually
+      }
+    }
+
+    // Initialize immediately
+    refreshStatus();
+    setInterval(refreshStatus, 2000);
+    log('Ready - click Start Proxy to begin', 'success');
+
+    // Run background setup after a tiny delay (non-blocking)
+    setTimeout(backgroundSetup, 100);
+  </script>
+</body>
+</html>
