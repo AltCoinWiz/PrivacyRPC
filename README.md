@@ -372,6 +372,53 @@ No build step. Load `/extension` directly in Chrome Developer Mode.
 
 ---
 
+## Report Scam URLs & Drainer Methods
+
+Help protect the Solana community by reporting phishing sites, wallet drainers, and scam URLs. All reports are pinned to IPFS for permanent, decentralized archival and feed directly into PrivacyRPC's threat detection engine.
+
+### How to Report
+
+| Method | Link |
+|--------|------|
+| **Website** | [Report a Scam URL](https://privacyrpc.com/report) — submit via web form with community voting |
+| **GitHub Issue** | [Open an issue](../../issues/new) — for detailed reports and drainer method documentation |
+
+### What to Report
+
+| Type | Examples |
+|------|----------|
+| **Phishing Sites** | Fake wallet sites, cloned dApp frontends, fake token claim pages |
+| **Wallet Drainers** | Sites that prompt malicious transaction approvals to drain funds |
+| **Fake Mints / Airdrops** | Scam NFT mints, fake token airdrops requiring wallet connection |
+| **Malicious Extensions** | Chrome extensions stealing keys, injecting transactions, or scraping data |
+| **Bookmark Scams** | Malicious bookmarklets that execute code when clicked |
+| **Fake Recovery Sites** | Sites posing as wallet recovery tools to steal seed phrases |
+
+### Reporting a Scam URL
+
+When reporting, include:
+
+- **URL** — the full scam URL
+- **Category** — type of scam (phishing, drainer, fake mint, etc.)
+- **Description** — how the scam works, what it targets
+- **Evidence** — screenshots, transaction hashes, or wallet addresses involved
+
+### Documenting Drainer Methods
+
+If you've identified a new drainer technique, open an issue with:
+
+- **Method name** — descriptive name for the technique
+- **How it works** — step-by-step breakdown of the attack flow
+- **Detection signals** — RPC patterns, DOM indicators, or behavioral signs
+- **Affected wallets** — which wallets or dApps are targeted
+- **Mitigation** — how users can protect themselves
+
+### Community Voting
+
+Reports submitted on the website can be confirmed by other community members. URLs with more confirmations are prioritized in the threat database and rise to the top of the public scam list.
+
+---
+
 ## Contributing
 
 Contributions are welcome. Please open an issue first to discuss what you'd like to change.
