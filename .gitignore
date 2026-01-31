@@ -35,5 +35,8 @@ __MACOSX/
 *.md
 !README.md
 
+# Gradle (Kotlin SDK)
+.gradle/
+
 # Tor data (runtime generated)
 tor-data/
