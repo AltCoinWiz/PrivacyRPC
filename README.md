@@ -382,6 +382,7 @@ Help protect the Solana community by reporting phishing sites, wallet drainers, 
 |--------|------|
 | **Website** | [Report a Scam URL](https://privacyrpc.com/report) — submit via web form with community voting |
 | **GitHub Issue** | [Open an issue](../../issues/new) — for detailed reports and drainer method documentation |
+| **Scam List** | [View all reports & known drainer methods](SCAM_REPORTS.md) |
 
 ### What to Report
 
