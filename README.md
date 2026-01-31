@@ -423,6 +423,12 @@ Reports submitted on the website can be confirmed by other community members. UR
 
 Contributions are welcome. Please open an issue first to discuss what you'd like to change.
 
+## Donate
+
+Support the development of PrivacyRPC. All donations go toward infrastructure, threat research, and keeping the tools free and open source.
+
+**Solana:** `ADm9PybsZq472vJRu3YPaJXYNcuEszRTEebZqK2eoLX5`
+
 ## License
 
 [MIT](LICENSE)
