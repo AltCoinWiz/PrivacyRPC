@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Free NFT Mint - Limited Edition</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    .referrer-info {
+      background: rgba(90, 245, 245, 0.1);
+      border: 1px solid #5AF5F5;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .referrer-info .label { color: #7D7D7D; margin-bottom: 4px; }
+    .referrer-info .value { color: #5AF5F5; word-break: break-all; }
+    .warning-box {
+      background: rgba(255,71,87,0.1);
+      border: 1px solid #FF4757;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .warning-box h4 { color: #FF4757; margin-bottom: 8px; }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: #5AF5F5;
+      border: none;
+      border-radius: 12px;
+      color: #000;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .risk-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .risk-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .risk-dot.low { background: #5AF5F5; }
+    .risk-dot.medium { background: #FFB800; }
+    .risk-dot.high { background: #FF4757; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="test-info">
+      <h4>TEST: Social Media Referrer Detection</h4>
+      <p>Many scams spread via Twitter/Discord links. This tests if PrivacyRPC detects when you arrive at a dApp from social media and warns about extra caution.</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px;">Referrer Analysis</h2>
+
+      <div class="referrer-info">
+        <div class="label">Document Referrer:</div>
+        <div class="value" id="referrer">-</div>
+      </div>
+
+      <div class="referrer-info">
+        <div class="label">Simulated Referrer (for testing):</div>
+        <div class="value" id="simReferrer">-</div>
+      </div>
+
+      <div class="warning-box" id="warningBox" style="display: none;">
+        <h4>Social Media Referrer Detected</h4>
+        <p style="font-size: 13px; color: #FF8A8A;" id="warningText"></p>
+      </div>
+
+      <button class="btn" onclick="simulateTwitterReferrer()">Simulate Twitter Referrer</button>
+      <button class="btn" style="margin-top: 10px; background: #7289DA;" onclick="simulateDiscordReferrer()">Simulate Discord Referrer</button>
+
+      <div class="status" id="status">
+        <p style="color: #7D7D7D; margin-bottom: 12px;">Social media referrer risks:</p>
+
+        <div class="risk-indicator">
+          <span class="risk-dot high"></span>
+          <span>Twitter/X links - often shortened/obscured URLs</span>
+        </div>
+        <div class="risk-indicator">
+          <span class="risk-dot high"></span>
+          <span>Discord links - common scam distribution channel</span>
+        </div>
+        <div class="risk-indicator">
+          <span class="risk-dot medium"></span>
+          <span>Telegram links - frequently used for pump & dumps</span>
+        </div>
+        <div class="risk-indicator">
+          <span class="risk-dot low"></span>
+          <span>Direct navigation - lowest risk</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Show actual referrer
+    document.getElementById('referrer').textContent = document.referrer || '(none - direct navigation)';
+
+    const SOCIAL_REFERRERS = [
+      { pattern: /twitter\.com|x\.com|t\.co/i, name: 'Twitter/X', risk: 'high' },
+      { pattern: /discord\.com|discord\.gg|discordapp\.com/i, name: 'Discord', risk: 'high' },
+      { pattern: /t\.me|telegram\./i, name: 'Telegram', risk: 'high' },
+      { pattern: /reddit\.com/i, name: 'Reddit', risk: 'medium' },
+      { pattern: /facebook\.com|fb\.com/i, name: 'Facebook', risk: 'medium' },
+      { pattern: /instagram\.com/i, name: 'Instagram', risk: 'medium' }
+    ];
+
+    function checkReferrer(ref) {
+      for (const social of SOCIAL_REFERRERS) {
+        if (social.pattern.test(ref)) {
+          return social;
+        }
+      }
+      return null;
+    }
+
+    function showWarning(social, ref) {
+      const box = document.getElementById('warningBox');
+      const text = document.getElementById('warningText');
+      box.style.display = 'block';
+      text.textContent = `You arrived here from ${social.name}. Scam links are commonly shared on social media. Verify this is a legitimate site before connecting your wallet.`;
+    }
+
+    function simulateTwitterReferrer() {
+      const ref = 'https://twitter.com/scammer/status/123456789';
+      document.getElementById('simReferrer').textContent = ref;
+      const social = checkReferrer(ref);
+      if (social) {
+        showWarning(social, ref);
+        console.log('[PrivacyRPC Test] Would send SOCIAL_REFERRER warning to extension');
+      }
+    }
+
+    function simulateDiscordReferrer() {
+      const ref = 'https://discord.com/channels/123/456/789';
+      document.getElementById('simReferrer').textContent = ref;
+      const social = checkReferrer(ref);
+      if (social) {
+        showWarning(social, ref);
+        console.log('[PrivacyRPC Test] Would send SOCIAL_REFERRER warning to extension');
+      }
+    }
+
+    // Check actual referrer on page load
+    const actualSocial = checkReferrer(document.referrer);
+    if (actualSocial) {
+      showWarning(actualSocial, document.referrer);
+    }
+  </script>
+</body>
+</html>

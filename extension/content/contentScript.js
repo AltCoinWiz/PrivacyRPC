@@ -80,6 +80,11 @@
 
   // Create notification container
   function ensureContainer() {
+    // Wait for document.body to exist
+    if (!document.body) {
+      return null;
+    }
+
     if (container && document.body.contains(container)) return container;
 
     container = document.createElement('div');
@@ -89,8 +94,8 @@
     return container;
   }
 
-  // Show notification
-  function showNotification(data) {
+  // Show notification (with DOM ready retry)
+  function showNotification(data, retryCount = 0) {
     const {
       id = `privacyrpc-notif-${++notificationCounter}`,
       type = 'INFO',
@@ -101,7 +106,19 @@
       actions = []
     } = data;
 
-    ensureContainer();
+    // Try to get/create container
+    const currentContainer = ensureContainer();
+
+    // If DOM not ready, retry after a short delay (up to 10 retries = 1 second)
+    if (!currentContainer) {
+      if (retryCount < 10) {
+        setTimeout(() => showNotification(data, retryCount + 1), 100);
+        return null;
+      } else {
+        console.warn('[PrivacyRPC] Could not create notification container after retries');
+        return null;
+      }
+    }
 
     // Remove existing notification with same id
     if (notifications.has(id)) {
@@ -157,7 +174,7 @@
     });
 
     // Add to container
-    container.appendChild(notif);
+    currentContainer.appendChild(notif);
     notifications.set(id, { element: notif, timeout: null });
 
     // Auto-dismiss after duration
@@ -643,6 +660,190 @@
     }
   });
 
+  // ============================================================================
+  // DOM-BASED PHISHING DETECTION
+  // Scans page content for scam patterns
+  // ============================================================================
+
+  // Track what we've already warned about on this page
+  const domWarnings = new Set();
+
+
+  // Urgency/scam language patterns
+  const URGENCY_PATTERNS = [
+    /act now/i, /limited time/i, /expires? (in|soon)/i, /hurry/i,
+    /don'?t miss/i, /last chance/i, /ending soon/i, /claim (your |now|free)/i,
+    /free (airdrop|tokens?|nft|mint)/i, /congratulations/i, /you('ve| have)? (been |)won/i,
+    /selected for/i, /eligible for/i, /unclaimed (tokens?|rewards?|airdrop)/i,
+    /urgent/i, /immediately/i, /act fast/i, /before it'?s (too late|gone)/i
+  ];
+
+
+  // Scan for urgency/scam language
+  function scanForUrgencyLanguage() {
+    if (domWarnings.has('urgency')) return;
+
+    const pageText = document.body?.innerText || '';
+    let matchCount = 0;
+    const matches = [];
+
+    for (const pattern of URGENCY_PATTERNS) {
+      if (pattern.test(pageText)) {
+        matchCount++;
+        matches.push(pattern.source);
+        if (matchCount >= 3) break; // 3+ matches = definitely suspicious
+      }
+    }
+
+    if (matchCount >= 2) {
+      domWarnings.add('urgency');
+      showNotification({
+        type: 'EXT_WARNING',
+        title: 'Scam Language Detected',
+        message: 'This page uses urgency tactics common in scams. Be very careful before connecting your wallet.',
+        priority: 80,
+        duration: 10000,
+        actions: [
+          { label: 'Trust Site', action: 'dismiss' },
+          { label: 'Leave', action: 'close_tab' }
+        ]
+      });
+      console.log('[PrivacyRPC] Urgency language detected:', matches);
+    }
+  }
+
+  // Seed phrase keywords - if page mentions these + has many inputs = SCAM
+  const SEED_PHRASE_KEYWORDS = [
+    /seed\s*phrase/i, /recovery\s*phrase/i, /secret\s*phrase/i,
+    /mnemonic/i, /12[\s-]*word/i, /24[\s-]*word/i,
+    /backup\s*phrase/i, /wallet\s*phrase/i, /import\s*wallet/i,
+    /restore\s*wallet/i, /enter\s*your\s*(seed|phrase|words)/i
+  ];
+
+  // Scan for seed phrase input forms
+  // Rule: NO legitimate website asks for your seed phrase. EVER.
+  // Wallets are apps/extensions, not websites.
+  function scanForSeedPhraseForm() {
+    if (domWarnings.has('seedphrase')) return;
+
+    // Count text/password inputs on the page
+    const inputs = document.querySelectorAll('input[type="text"], input[type="password"], input:not([type])');
+    const inputCount = inputs.length;
+
+    // Need at least 12 inputs (standard seed phrase length)
+    if (inputCount < 12) return;
+
+    // Check if page mentions seed phrase related keywords
+    const pageText = document.body?.innerText || '';
+    let hasKeyword = false;
+
+    for (const pattern of SEED_PHRASE_KEYWORDS) {
+      if (pattern.test(pageText)) {
+        hasKeyword = true;
+        break;
+      }
+    }
+
+    // 12+ inputs AND seed phrase keywords = DEFINITE SCAM
+    if (hasKeyword) {
+      domWarnings.add('seedphrase');
+      showNotification({
+        type: 'EXT_WARNING',
+        title: 'SEED PHRASE SCAM',
+        message: 'This page is asking for your seed phrase. NO legitimate website ever asks for this. This is a SCAM designed to steal your wallet.',
+        priority: 100,
+        duration: 0, // Don't auto-dismiss - this is critical
+        actions: [
+          { label: 'Leave Now', action: 'close_tab' },
+          { label: 'I Understand the Risk', action: 'dismiss' }
+        ]
+      });
+      console.log('[PrivacyRPC] SEED PHRASE SCAM DETECTED - inputs:', inputCount);
+    }
+  }
+
+  // Social media referrers - scam links commonly spread here
+  const SOCIAL_REFERRERS = [
+    { pattern: /twitter\.com|x\.com|t\.co/i, name: 'Twitter/X' },
+    { pattern: /discord\.com|discord\.gg|discordapp\.com/i, name: 'Discord' },
+    { pattern: /t\.me|telegram\./i, name: 'Telegram' },
+    { pattern: /reddit\.com/i, name: 'Reddit' }
+  ];
+
+  // Check if user arrived from social media link
+  function checkSocialReferrer() {
+    if (domWarnings.has('socialref')) return;
+
+    const referrer = document.referrer || '';
+    if (!referrer) return; // Direct navigation, no warning
+
+    for (const social of SOCIAL_REFERRERS) {
+      if (social.pattern.test(referrer)) {
+        domWarnings.add('socialref');
+        showNotification({
+          type: 'EXT_WARNING',
+          title: 'Social Media Link',
+          message: `You arrived from ${social.name}. Scam links spread on social media - verify this is legitimate before connecting your wallet.`,
+          priority: 60,
+          duration: 8000,
+          actions: [
+            { label: 'Got It', action: 'dismiss' },
+            { label: 'Leave', action: 'close_tab' }
+          ]
+        });
+        console.log('[PrivacyRPC] Social referrer detected:', social.name, referrer);
+        break;
+      }
+    }
+  }
+
+  // Run DOM scans when page is ready
+  function runDomScans() {
+    // Check referrer immediately (doesn't need DOM)
+    checkSocialReferrer();
+
+    // Small delay to let page render
+    setTimeout(() => {
+      scanForUrgencyLanguage();
+      scanForSeedPhraseForm();
+    }, 1000);
+
+    // Re-scan after more content loads (SPAs)
+    setTimeout(() => {
+      scanForUrgencyLanguage();
+      scanForSeedPhraseForm();
+    }, 3000);
+  }
+
+  // Wait for DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runDomScans);
+  } else {
+    runDomScans();
+  }
+
+  // Also scan on major DOM changes (for SPAs)
+  const observer = new MutationObserver((mutations) => {
+    // Debounce - only scan once per second max
+    if (!observer.scanning) {
+      observer.scanning = true;
+      setTimeout(() => {
+        scanForUrgencyLanguage();
+        scanForSeedPhraseForm();
+        observer.scanning = false;
+      }, 1000);
+    }
+  });
+
+  // Start observing once body exists
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+
   // Log initialization
-  console.log('[PrivacyRPC] Content script loaded with transaction decoder');
+  console.log('[PrivacyRPC] Content script loaded with transaction decoder + DOM scanning');
 })();

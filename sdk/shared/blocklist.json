@@ -1,0 +1,83 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-01-31",
+
+  "legitimateDomains": {
+    "phantom.app": { "name": "Phantom Wallet", "category": "WALLET" },
+    "backpack.app": { "name": "Backpack Wallet", "category": "WALLET" },
+    "solflare.com": { "name": "Solflare Wallet", "category": "WALLET" },
+    "metamask.io": { "name": "MetaMask Wallet", "category": "WALLET" },
+    "trustwallet.com": { "name": "Trust Wallet", "category": "WALLET" },
+    "jup.ag": { "name": "Jupiter Exchange", "category": "DEX" },
+    "jupiter.ag": { "name": "Jupiter Exchange", "category": "DEX" },
+    "raydium.io": { "name": "Raydium", "category": "DEX" },
+    "orca.so": { "name": "Orca", "category": "DEX" },
+    "uniswap.org": { "name": "Uniswap", "category": "DEX" },
+    "pump.fun": { "name": "Pump.fun", "category": "DEX" },
+    "solana.com": { "name": "Solana", "category": "BLOCKCHAIN" },
+    "solscan.io": { "name": "Solscan Explorer", "category": "EXPLORER" },
+    "solana.fm": { "name": "Solana FM Explorer", "category": "EXPLORER" },
+    "helius.dev": { "name": "Helius", "category": "RPC" },
+    "helius.xyz": { "name": "Helius", "category": "RPC" },
+    "quicknode.com": { "name": "QuickNode", "category": "RPC" },
+    "magiceden.io": { "name": "Magic Eden", "category": "NFT" },
+    "tensor.trade": { "name": "Tensor", "category": "NFT" },
+    "opensea.io": { "name": "OpenSea", "category": "NFT" },
+    "coingecko.com": { "name": "CoinGecko", "category": "DATA" },
+    "coinmarketcap.com": { "name": "CoinMarketCap", "category": "DATA" },
+    "dexscreener.com": { "name": "DEX Screener", "category": "DATA" },
+    "birdeye.so": { "name": "Birdeye", "category": "DATA" }
+  },
+
+  "knownPhishing": [
+    "phantom-wallet.app",
+    "phantomwallet.io",
+    "phantom-app.com",
+    "solana-airdrop.com",
+    "jupiter-airdrop.com",
+    "free-solana.com",
+    "claim-jupiter.com",
+    "pump.fun-watch.dev"
+  ],
+
+  "suspiciousPatterns": [
+    { "pattern": "phantom[^a-z]", "legit": "phantom.app", "reason": "Fake Phantom site" },
+    { "pattern": "metamask[^a-z]", "legit": "metamask.io", "reason": "Fake MetaMask site" },
+    { "pattern": "jupiter[^a-z]", "legit": "jup.ag", "reason": "Fake Jupiter site" },
+    { "pattern": "raydium[^a-z]", "legit": "raydium.io", "reason": "Fake Raydium site" },
+    { "pattern": "pump\\.?fun[^a-z]", "legit": "pump.fun", "reason": "Fake pump.fun site", "flags": "i" },
+    { "pattern": "(airdrop|claim|free).*(solana|sol|jupiter|jup)", "legit": null, "reason": "Airdrop scam", "flags": "i" },
+    { "pattern": "(solana|sol|jupiter|jup).*(airdrop|claim|free)", "legit": null, "reason": "Airdrop scam", "flags": "i" },
+    { "pattern": "wallet.?connect.?(verify|validate|sync)", "legit": null, "reason": "Wallet connect scam", "flags": "i" },
+    { "pattern": "(recover|restore).*(wallet|phrase|seed)", "legit": null, "reason": "Recovery scam", "flags": "i" }
+  ],
+
+  "homographs": {
+    "\u0430": "a",
+    "\u0435": "e",
+    "\u043e": "o",
+    "\u0440": "p",
+    "\u0441": "c",
+    "\u0443": "y",
+    "\u0445": "x",
+    "\u0455": "s",
+    "\u0456": "i",
+    "\u0458": "j",
+    "\u04bb": "h",
+    "\u0501": "d",
+    "\u051d": "w",
+    "\u0251": "a",
+    "\u0261": "g",
+    "\u0269": "i",
+    "\u026a": "i",
+    "\u03b9": "i",
+    "\u03bf": "o",
+    "\u03b1": "a",
+    "\u03bd": "v",
+    "\u03c4": "t",
+    "0": "o",
+    "1": "l",
+    "5": "s",
+    "3": "e"
+  }
+}

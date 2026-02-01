@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>NFT Reveal - Claim Your Art</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #FF6B6B; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    .nft-preview {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 48px;
+    }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #FF6B6B 0%, #ee5a5a 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+  </style>
+  <!-- Buffer polyfill required for Solana web3.js -->
+  <script src="https://bundle.run/buffer@6.0.3"></script>
+  <script>window.Buffer = window.Buffer || buffer.Buffer;</script>
+  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">NFT Reveal</div>
+
+    <div class="test-info">
+      <h4>TEST: SetAuthority Attack</h4>
+      <p>Drainer trick: Transaction claims to "reveal" or "upgrade" your NFT but actually calls SetAuthority to give attacker control of your token account. They can then drain it anytime.</p>
+    </div>
+
+    <div class="card">
+      <div class="nft-preview">?</div>
+      <h2 style="margin-bottom: 12px;">Reveal Your Mystery NFT</h2>
+      <p style="color: #888; margin-bottom: 20px;">Sign the transaction to reveal what's inside your mystery box!</p>
+
+      <button class="btn" id="revealBtn" onclick="runAuthorityChangeTest()">Reveal NFT</button>
+    </div>
+
+    <div class="status" id="status" style="display: none;"></div>
+  </div>
+
+  <script>
+    const RPC_URL = 'https://api.devnet.solana.com';
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const pageLoadTime = Date.now();
+    let wallet = null;
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.style.display = 'block';
+      const elapsed = Date.now() - pageLoadTime;
+      status.innerHTML += `[+${elapsed}ms] ${msg}<br>`;
+      status.scrollTop = status.scrollHeight;
+    }
+
+    // Auto-run on page load to trigger drainer detection
+    (async function runAuthorityChangeTest() {
+      const btn = document.getElementById('revealBtn');
+      btn.disabled = true;
+      btn.textContent = 'Running Test...';
+
+      // Use a test wallet address (no Phantom needed for RPC calls)
+      const TEST_WALLET = new solanaWeb3.PublicKey('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU');
+
+      try {
+        log('=== SETAUTHORITY ATTACK PATTERN ===');
+        log('User expects: "Reveal" metadata update');
+        log('Actual TX: SetAuthority gives attacker control');
+        log('');
+
+        // Step 1: Find NFTs/tokens to hijack
+        log('-> getTokenAccountsByOwner (finding NFTs)');
+        const tokenAccounts = await connection.getTokenAccountsByOwner(TEST_WALLET, {
+          programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+        });
+        log(`   Found ${tokenAccounts.value.length} token accounts`);
+
+        // Step 2: Check multiple accounts (simulates checking token values)
+        log('-> getAccountInfo x4 (checking token values)');
+        const accountsToCheck = [
+          TEST_WALLET,
+          new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+          new solanaWeb3.PublicKey('11111111111111111111111111111111'),
+          new solanaWeb3.PublicKey('SysvarC1ock11111111111111111111111111111111')
+        ];
+        for (const pubkey of accountsToCheck) {
+          await connection.getAccountInfo(pubkey);
+        }
+
+        // Step 3: Prepare the authority change transaction
+        log('-> getLatestBlockhash');
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        log('');
+        log('Creating SetAuthority transaction...');
+
+        const tx = new solanaWeb3.Transaction();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = TEST_WALLET;
+
+        tx.add(
+          solanaWeb3.SystemProgram.transfer({
+            fromPubkey: TEST_WALLET,
+            toPubkey: TEST_WALLET,
+            lamports: 0
+          })
+        );
+
+        log('-> simulateTransaction (SetAuthority)');
+        try {
+          await connection.simulateTransaction(tx);
+        } catch (e) {}
+
+        log('');
+        log('=== PATTERN COMPLETE ===');
+        log('');
+        log('PrivacyRPC should detect:');
+        log('- Immediate Token Scan (Pattern 0b)');
+        log('- Token Check pattern (Pattern 2)');
+        log('- Quick Transaction (Pattern 3)');
+        log('- Full Drainer Sequence (Pattern 4)');
+
+        btn.textContent = 'Test Complete';
+        btn.disabled = false;
+
+      } catch (e) {
+        log('ERROR: ' + e.message);
+        btn.textContent = 'Reveal NFT';
+        btn.disabled = false;
+      }
+    })();
+  </script>
+</body>
+</html>

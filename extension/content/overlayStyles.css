@@ -30,9 +30,8 @@
   max-width: 360px !important;
   min-width: 300px !important;
   pointer-events: auto !important;
-  opacity: 0 !important;
-  transform: translateX(100%) !important;
-  animation: privacyrpc-slide-in 0.3s ease-out forwards !important;
+  opacity: 1 !important;
+  transform: translateX(0) !important;
 }
 
 /* Slide-in animation */

@@ -63,6 +63,7 @@ class PhishingDetector(
         "raydium.io" to DomainInfo("Raydium", DomainCategory.DEX),
         "orca.so" to DomainInfo("Orca", DomainCategory.DEX),
         "uniswap.org" to DomainInfo("Uniswap", DomainCategory.DEX),
+        "pump.fun" to DomainInfo("Pump.fun", DomainCategory.DEX),
 
         // Solana ecosystem
         "solana.com" to DomainInfo("Solana", DomainCategory.BLOCKCHAIN),
@@ -93,6 +94,8 @@ class PhishingDetector(
         "jupiter-airdrop.com",
         "free-solana.com",
         "claim-jupiter.com",
+        // pump.fun phishing
+        "pump.fun-watch.dev",
     )
 
     /**

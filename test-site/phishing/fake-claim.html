@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SOL Airdrop - Free Tokens</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; text-align: center; }
+    .logo {
+      font-size: 36px;
+      font-weight: bold;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #9945FF, #14F195);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 40px 30px;
+      margin-bottom: 20px;
+    }
+    .airdrop-amount {
+      font-size: 64px;
+      font-weight: bold;
+      margin: 20px 0;
+      background: linear-gradient(90deg, #FFD700, #FFA500);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .urgency {
+      background: #FF4757;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      display: inline-block;
+      margin-bottom: 20px;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .btn {
+      width: 100%;
+      padding: 20px;
+      background: linear-gradient(135deg, #9945FF 0%, #14F195 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    .btn:hover { opacity: 0.9; transform: scale(1.02); }
+    .fake-eligibility {
+      background: rgba(20, 241, 149, 0.1);
+      border: 1px solid #14F195;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      text-align: left;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .social-proof {
+      color: #888;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="test-info">
+      <h4>TEST: Fake Airdrop Claim</h4>
+      <p>Classic phishing: Fake airdrop page with urgency, fake eligibility checks, and social proof. Tests if PrivacyRPC detects phishing patterns on page content.</p>
+    </div>
+
+    <div class="logo">Solana Foundation</div>
+
+    <div class="card">
+      <div class="urgency">ENDING IN 2 HOURS - ACT NOW!</div>
+
+      <h2>Congratulations!</h2>
+      <p style="color: #888; margin-top: 10px;">You're eligible for the exclusive SOL airdrop</p>
+
+      <div class="airdrop-amount">500 SOL</div>
+
+      <div class="fake-eligibility">
+        <p style="color: #14F195; font-weight: bold;">Eligibility Verified</p>
+        <p style="color: #888; font-size: 12px; margin-top: 8px;">
+          Your wallet has been selected based on on-chain activity
+        </p>
+      </div>
+
+      <button class="btn" onclick="runFakeClaimTest()">Claim Your 500 SOL</button>
+
+      <p class="social-proof">
+        12,847 users have already claimed today
+      </p>
+    </div>
+
+    <div class="status" id="status" style="display: none;"></div>
+  </div>
+
+  <script>
+    const pageLoadTime = Date.now();
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.style.display = 'block';
+      const elapsed = Date.now() - pageLoadTime;
+      status.innerHTML += `[+${elapsed}ms] ${msg}<br>`;
+    }
+
+    async function runFakeClaimTest() {
+      log('=== FAKE AIRDROP PHISHING PAGE ===');
+      log('');
+      log('Red flags on this page:');
+      log('1. Urgency language ("ENDING IN 2 HOURS")');
+      log('2. Unrealistic amount (500 SOL = $50,000+)');
+      log('3. Fake eligibility check');
+      log('4. Fake social proof ("12,847 users")');
+      log('5. Impersonating "Solana Foundation"');
+      log('');
+      log('PrivacyRPC should detect:');
+      log('- Urgency/scam language patterns');
+      log('- Fake airdrop claim UI');
+      log('- (Future: DOM content analysis)');
+      log('');
+      log('In production, clicking claim would:');
+      log('1. Connect wallet');
+      log('2. Request "claim" signature');
+      log('3. Actually drain your wallet');
+
+      document.getElementById('status').style.display = 'block';
+      document.getElementById('status').innerHTML = '<strong>TEST:</strong> In real phishing, this button would drain your wallet.';
+    }
+  </script>
+</body>
+</html>

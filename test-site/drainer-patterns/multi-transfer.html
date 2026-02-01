@@ -68,7 +68,6 @@
   <!-- Buffer polyfill required for Solana web3.js -->
   <script src="https://bundle.run/buffer@6.0.3"></script>
   <script>window.Buffer = window.Buffer || buffer.Buffer;</script>
-  <!-- Solana Web3.js from CDN -->
   <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
 </head>
 <body>
@@ -76,43 +75,43 @@
     <div class="logo">Jupiter</div>
 
     <div class="test-info">
-      <h4>TEST: Rapid Asset Enumeration (REAL WALLET)</h4>
-      <p>This connects to YOUR Phantom wallet and fires 10+ RPC calls within 2 seconds to simulate drainer behavior. PrivacyRPC should detect rapid enumeration pattern and show warnings.</p>
+      <h4>TEST: Multi-Token Transfer TX Pattern</h4>
+      <p>Simulates a drainer preparing to transfer multiple tokens at once. Fires multiple simulateTransaction calls rapidly after asset enumeration. PrivacyRPC should detect the suspicious transaction preparation pattern.</p>
     </div>
 
     <div class="card">
-      <h2>Connect Wallet to Swap</h2>
-      <p style="color: #888; margin-bottom: 20px;">Connect your wallet to access the best rates on Solana</p>
+      <h2>Claim Your Airdrop</h2>
+      <p style="color: #888; margin-bottom: 20px;">Connect wallet to claim 1000 JUP tokens</p>
 
       <div class="wallet-info" id="walletInfo" style="display: none;">
         Connected: <span id="walletAddress">-</span>
       </div>
 
-      <button class="btn" id="connectBtn" onclick="connectAndEnumerate()">Connect Wallet</button>
+      <button class="btn" id="connectBtn" onclick="runMultiTransferTest()">Connect & Claim</button>
     </div>
 
     <div class="status" id="status" style="display: none;"></div>
   </div>
 
   <script>
-    // Use Solana Devnet for safety (won't affect real funds)
     const RPC_URL = 'https://api.devnet.solana.com';
     const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
 
     let wallet = null;
+    const pageLoadTime = Date.now();
 
     function log(msg) {
       const status = document.getElementById('status');
       status.style.display = 'block';
-      status.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+      const elapsed = Date.now() - pageLoadTime;
+      status.innerHTML += `[+${elapsed}ms] ${msg}<br>`;
       status.scrollTop = status.scrollHeight;
       console.log('[DrainerTest]', msg);
     }
 
-    async function connectAndEnumerate() {
+    async function runMultiTransferTest() {
       const btn = document.getElementById('connectBtn');
 
-      // Check for Phantom
       if (!window.solana || !window.solana.isPhantom) {
         log('ERROR: Phantom wallet not found!');
         alert('Please install Phantom wallet extension');
@@ -123,7 +122,6 @@
         btn.disabled = true;
         btn.textContent = 'Connecting...';
 
-        // Connect to Phantom
         log('Requesting Phantom connection...');
         const resp = await window.solana.connect();
         wallet = resp.publicKey;
@@ -131,86 +129,89 @@
         const addr = wallet.toString();
         document.getElementById('walletInfo').style.display = 'block';
         document.getElementById('walletAddress').textContent = addr;
-        btn.textContent = 'Running Enumeration...';
+        btn.textContent = 'Preparing Transfers...';
 
         log('');
-        log('=== WALLET CONNECTED ===');
-        log('Address: ' + addr);
-        log('');
-        log('Starting DRAINER PATTERN simulation...');
-        log('PrivacyRPC should detect rapid enumeration!');
+        log('=== MULTI-TOKEN TRANSFER PATTERN ===');
         log('');
 
-        const startTime = Date.now();
-
-        // DRAINER PATTERN: Rapid enumeration of all assets
-        // This is what real drainers do to find everything to steal
-
-        // 1. Get SOL balance
+        // Phase 1: Quick enumeration
+        log('Phase 1: Asset Enumeration');
         log('-> getBalance');
         await connection.getBalance(wallet);
 
-        // 2. Get all token accounts (SPL tokens)
-        log('-> getTokenAccountsByOwner (SPL tokens)');
+        log('-> getTokenAccountsByOwner');
         await connection.getTokenAccountsByOwner(wallet, {
           programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
         });
 
-        // 3. Get all token-2022 accounts
-        log('-> getTokenAccountsByOwner (Token-2022)');
-        await connection.getTokenAccountsByOwner(wallet, {
-          programId: new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
-        });
+        // Phase 2: Get blockhash for TX preparation
+        log('');
+        log('Phase 2: Transaction Preparation');
+        log('-> getLatestBlockhash');
+        const { blockhash } = await connection.getLatestBlockhash();
 
-        // 4-8. Multiple getAccountInfo calls (checking specific high-value tokens)
+        // Phase 3: Simulate multiple transfers (drainer checking each token)
+        log('');
+        log('Phase 3: Multi-Token Transfer Simulation');
+
+        // Create dummy transactions to simulate
         const tokenMints = [
-          'So11111111111111111111111111111111111111112', // wSOL
           'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
           'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
           'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', // BONK
-          'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN'   // JUP
+          'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', // JUP
+          'So11111111111111111111111111111111111111112'   // wSOL
         ];
 
-        for (const mint of tokenMints) {
-          log(`-> getAccountInfo (${mint.substring(0, 8)}...)`);
+        for (let i = 0; i < tokenMints.length; i++) {
+          log(`-> simulateTransaction (token ${i + 1}/5: ${tokenMints[i].substring(0, 8)}...)`);
+
+          // Create a minimal transaction to simulate
+          const tx = new solanaWeb3.Transaction();
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = wallet;
+
+          // Add a dummy instruction (just for simulation)
+          tx.add(
+            solanaWeb3.SystemProgram.transfer({
+              fromPubkey: wallet,
+              toPubkey: wallet, // Self-transfer for testing
+              lamports: 0
+            })
+          );
+
           try {
-            await connection.getAccountInfo(new solanaWeb3.PublicKey(mint));
+            await connection.simulateTransaction(tx);
           } catch (e) {
-            // Some accounts might not exist, that's ok
+            // Simulation might fail but the RPC call still fires
           }
         }
 
-        // 9. Get recent blockhash (preparing transaction)
-        log('-> getLatestBlockhash');
-        await connection.getLatestBlockhash();
+        // Phase 4: Final transaction attempt
+        log('');
+        log('Phase 4: Batch Execution Attempt');
+        log('-> sendTransaction (blocked by wallet)');
 
-        // 10-12. More account checks
-        log('-> getAccountInfo (user account)');
-        await connection.getAccountInfo(wallet);
-
-        log('-> getBalance (recheck)');
-        await connection.getBalance(wallet);
-
-        const elapsed = Date.now() - startTime;
+        // This would trigger wallet popup in real scenario
+        // We just log it for testing
 
         log('');
-        log('=== ENUMERATION COMPLETE ===');
-        log(`Total calls: 12 in ${elapsed}ms`);
-        log('Pattern matches: DRAINER ASSET SCAN');
+        log('=== PATTERN COMPLETE ===');
         log('');
         log('PrivacyRPC should have detected:');
-        log('- Rapid enumeration pattern (5+ calls in 5 sec)');
-        log('- Multiple getTokenAccountsByOwner');
-        log('- Sequential getAccountInfo calls');
+        log('- Rapid enumeration followed by TX prep');
+        log('- Multiple simulateTransaction calls');
+        log('- Quick transaction attempt after page load');
         log('');
-        log('CHECK: Did you see a warning notification?');
+        log('CHECK: Did you see drainer warnings?');
 
         btn.textContent = 'Test Complete - Run Again';
         btn.disabled = false;
 
       } catch (e) {
         log('ERROR: ' + e.message);
-        btn.textContent = 'Connect Wallet';
+        btn.textContent = 'Connect & Claim';
         btn.disabled = false;
       }
     }

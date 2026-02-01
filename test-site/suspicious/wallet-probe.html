@@ -44,19 +44,15 @@
     <div class="status" id="status">Starting wallet probe pattern...</div>
   </div>
 
+  <!-- Buffer polyfill required for Solana web3.js -->
+  <script src="https://bundle.run/buffer@6.0.3"></script>
+  <script>window.Buffer = window.Buffer || buffer.Buffer;</script>
+  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
   <script>
-    const RPC_URL = 'http://localhost:3333/mock-rpc';
-    const TEST_WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+    const RPC_URL = 'https://api.devnet.solana.com';
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const TEST_WALLET = new solanaWeb3.PublicKey('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU');
     const pageLoadTime = Date.now();
-
-    async function rpcCall(method, params = []) {
-      const res = await fetch(RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
-      });
-      return res.json();
-    }
 
     function log(msg) {
       document.getElementById('status').innerHTML += '<br>' + msg;
@@ -66,12 +62,16 @@
     (async function probeWallet() {
       for (let i = 1; i <= 8; i++) {
         log(`[Probe ${i}] getBalance @ +${Date.now() - pageLoadTime}ms`);
-        await rpcCall('getBalance', [TEST_WALLET]);
+        try {
+          await connection.getBalance(TEST_WALLET);
+        } catch (e) {
+          // Ignore errors, we just want the RPC calls to fire
+        }
         await new Promise(r => setTimeout(r, 800)); // 800ms between checks
       }
       log('');
       log('=== 8 balance checks in ~6 seconds ===');
-      log('PrivacyRPC should detect: "Multiple Wallet Probes"');
+      log('PrivacyRPC should detect: "Rapid Asset Enumeration"');
     })();
   </script>
 </body>

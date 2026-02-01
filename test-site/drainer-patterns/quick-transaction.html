@@ -36,6 +36,8 @@
       border-radius: 8px;
       font-family: monospace;
       font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
     }
     .nft-card {
       background: #252525;
@@ -49,79 +51,195 @@
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       border-radius: 8px;
       margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+    }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #e42575 0%, #c71f65 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .wallet-info {
+      background: rgba(90, 245, 245, 0.1);
+      border: 1px solid #5AF5F5;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-family: monospace;
+      font-size: 11px;
+      word-break: break-all;
     }
   </style>
+  <!-- Buffer polyfill required for Solana web3.js -->
+  <script src="https://bundle.run/buffer@6.0.3"></script>
+  <script>window.Buffer = window.Buffer || buffer.Buffer;</script>
+  <!-- Solana Web3.js from CDN -->
+  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
 </head>
 <body>
   <div class="container">
     <div class="logo">Magic Eden</div>
 
     <div class="test-info">
-      <h4>TEST: Quick Transaction Request</h4>
-      <p>This page requests sendTransaction within 3 seconds of loading - before user has time to review. PrivacyRPC should show "Quick Transfer Attempt" warning.</p>
+      <h4>TEST: Quick Transaction Request (REAL WALLET)</h4>
+      <p>This connects to Phantom, then IMMEDIATELY requests a transaction signature within 3 seconds. PrivacyRPC should intercept via injected.js and show transaction review BEFORE Phantom popup. Also triggers "Quick Transaction" drainer warning.</p>
     </div>
 
     <div class="card">
       <div class="nft-card">
-        <div class="nft-image"></div>
+        <div class="nft-image">🎨</div>
         <h3>Mad Lads #4269</h3>
         <p style="color: #888;">Floor: 45 SOL</p>
       </div>
-      <p style="color: #888;">Processing your purchase...</p>
+
+      <div class="wallet-info" id="walletInfo" style="display: none;">
+        Connected: <span id="walletAddress">-</span>
+      </div>
+
+      <button class="btn" id="connectBtn" onclick="connectAndSign()">Connect & Buy Now</button>
     </div>
 
-    <div class="status" id="status"></div>
+    <div class="status" id="status" style="display: none;"></div>
   </div>
 
   <script>
-    const RPC_URL = 'http://localhost:3333/mock-rpc';
+    // Use Solana Devnet for safety
+    const RPC_URL = 'https://api.devnet.solana.com';
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
     const pageLoadTime = Date.now();
 
-    async function rpcCall(method, params = []) {
-      const res = await fetch(RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method,
-          params
-        })
-      });
-      return res.json();
-    }
+    let wallet = null;
 
     function log(msg) {
       const status = document.getElementById('status');
-      status.innerHTML += msg + '<br>';
+      status.style.display = 'block';
+      const elapsed = Date.now() - pageLoadTime;
+      status.innerHTML += `[+${elapsed}ms] ${msg}<br>`;
+      status.scrollTop = status.scrollHeight;
+      console.log('[QuickTxTest]', msg);
     }
 
-    // Quick transaction attempt - fires sendTransaction within 3 seconds
-    (async function quickTransaction() {
-      log('Page loaded, starting quick transaction flow...');
-      log('');
+    async function connectAndSign() {
+      const btn = document.getElementById('connectBtn');
 
-      // Small delay to seem legitimate, but still under 5 seconds
-      await new Promise(r => setTimeout(r, 1500));
+      // Check for Phantom
+      if (!window.solana || !window.solana.isPhantom) {
+        log('ERROR: Phantom wallet not found!');
+        alert('Please install Phantom wallet extension');
+        return;
+      }
 
-      log(`[+${Date.now() - pageLoadTime}ms] getLatestBlockhash`);
-      await rpcCall('getLatestBlockhash');
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Connecting...';
 
-      log(`[+${Date.now() - pageLoadTime}ms] simulateTransaction`);
-      await rpcCall('simulateTransaction', ['FAKE_TX_BASE64']);
+        // Connect to Phantom
+        log('Requesting Phantom connection...');
+        const resp = await window.solana.connect();
+        wallet = resp.publicKey;
 
-      // This is the suspicious part - sendTransaction without user clicking anything
-      log(`[+${Date.now() - pageLoadTime}ms] sendTransaction (NO USER ACTION!)`);
-      await rpcCall('sendTransaction', ['FAKE_SIGNED_TX']);
+        const addr = wallet.toString();
+        document.getElementById('walletInfo').style.display = 'block';
+        document.getElementById('walletAddress').textContent = addr;
 
-      log('');
-      log('=== TRANSACTION SENT ===');
-      log(`Time since page load: ${Date.now() - pageLoadTime}ms`);
-      log('');
-      log('PrivacyRPC should detect:');
-      log('- "Quick Transfer Attempt" warning');
-      log('- sendTransaction within 5 seconds of load');
-    })();
+        log('');
+        log('=== WALLET CONNECTED ===');
+        log('Address: ' + addr);
+        log('');
+
+        // DRAINER PATTERN: Quick transaction after connect
+        // Real drainers try to get signature ASAP before user can think
+        log('Starting QUICK TRANSACTION test...');
+        log('Will request signature in 2 seconds...');
+        log('');
+
+        btn.textContent = 'Preparing transaction...';
+
+        // Small delay but still under 5 seconds from page load
+        await new Promise(r => setTimeout(r, 1500));
+
+        log('-> getLatestBlockhash');
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+        log('-> Creating transfer transaction...');
+
+        // Create a simple transfer transaction (to self, 0 SOL - safe for testing)
+        const transaction = new solanaWeb3.Transaction().add(
+          solanaWeb3.SystemProgram.transfer({
+            fromPubkey: wallet,
+            toPubkey: wallet, // Send to self
+            lamports: 0 // 0 SOL - just for testing
+          })
+        );
+
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet;
+
+        // Simulate first (this is what PrivacyRPC detects as TX execution)
+        log('-> simulateTransaction (triggers detection)');
+        try {
+          await connection.simulateTransaction(transaction);
+        } catch (e) {
+          // Simulation might fail but RPC call still fires
+        }
+
+        log('');
+        log('>>> REQUESTING SIGNATURE NOW <<<');
+        log('PrivacyRPC injected.js should intercept this!');
+        log('You should see Transaction Review BEFORE Phantom popup!');
+        log('');
+
+        btn.textContent = 'Awaiting signature...';
+
+        // THIS IS WHERE PRIVACYRPC INTERCEPTS
+        // The injected.js wraps signTransaction and shows our overlay first
+        try {
+          const signed = await window.solana.signTransaction(transaction);
+
+          log('');
+          log('=== TRANSACTION SIGNED ===');
+          log('PrivacyRPC allowed the transaction');
+          log('(We wont actually send it - just testing interception)');
+
+        } catch (signError) {
+          if (signError.message.includes('rejected') || signError.message.includes('PrivacyRPC')) {
+            log('');
+            log('=== TRANSACTION BLOCKED ===');
+            log('PrivacyRPC or user rejected the transaction!');
+            log('This is the expected behavior for suspicious activity.');
+          } else {
+            log('Sign error: ' + signError.message);
+          }
+        }
+
+        log('');
+        log('=== TEST COMPLETE ===');
+        log(`Total time since page load: ${Date.now() - pageLoadTime}ms`);
+        log('');
+        log('PrivacyRPC should have shown:');
+        log('- Transaction Review overlay BEFORE Phantom');
+        log('- "Quick Transaction" drainer warning');
+        log('- Option to Approve or Reject');
+
+        btn.textContent = 'Test Complete - Run Again';
+        btn.disabled = false;
+
+      } catch (e) {
+        log('ERROR: ' + e.message);
+        btn.textContent = 'Connect & Buy Now';
+        btn.disabled = false;
+      }
+    }
   </script>
 </body>
 </html>

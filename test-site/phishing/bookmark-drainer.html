@@ -82,7 +82,7 @@
     <p class="subtitle">Protect your trades from rug pulls</p>
 
     <div class="card">
-      <a class="drag-btn" href="javascript:(()=>{alert('SIMULATED ATTACK: This would steal localStorage and wallet keys!');console.log('Stolen data:', {localStorage: Object.keys(localStorage), cookies: document.cookie.substring(0,50)});})()">
+      <a class="drag-btn" href="javascript:(()=>{console.log('[SIMULATED ATTACK] This would steal localStorage and wallet keys!');console.log('Stolen data:', {localStorage: Object.keys(localStorage), cookies: document.cookie.substring(0,50)});document.body.insertAdjacentHTML('beforeend','<div style=\&quot;position:fixed;bottom:20px;right:20px;background:#FF4757;color:#fff;padding:16px;border-radius:8px;z-index:99999\&quot;>SIMULATED: Credentials stolen!</div>');})()">
         Drag me to Start
       </a>
       <p class="instructions">

@@ -154,7 +154,11 @@ function initElements() {
     notifTorStatus: document.getElementById('notifTorStatus'),
     notifSuspicious: document.getElementById('notifSuspicious'),
     notifExtWarning: document.getElementById('notifExtWarning'),
-    notifProtection: document.getElementById('notifProtection')
+    notifProtection: document.getElementById('notifProtection'),
+
+    // Trusted sites
+    trustedSitesList: document.getElementById('trustedSitesList'),
+    noTrustedSites: document.getElementById('noTrustedSites')
   };
 }
 
@@ -175,6 +179,7 @@ async function init() {
   updateZKStats();
   getInstalledExtensions();
   getBackgroundActivity();
+  loadTrustedSites();
 }
 
 // Fetch proxy config from desktop app
@@ -203,6 +208,65 @@ async function loadNotificationSettings() {
   } catch (e) {
     log('Failed to load notification settings: ' + e.message);
   }
+}
+
+// Load and render trusted sites
+async function loadTrustedSites() {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'GET_TRUSTED_SITES' });
+    renderTrustedSites(result.trustedSites || []);
+  } catch (e) {
+    log('Failed to load trusted sites: ' + e.message);
+  }
+}
+
+// Render trusted sites list
+function renderTrustedSites(sites) {
+  if (!elements.trustedSitesList) return;
+
+  if (sites.length === 0) {
+    elements.trustedSitesList.innerHTML = '<div class="no-alerts" id="noTrustedSites">No trusted sites</div>';
+    return;
+  }
+
+  elements.trustedSitesList.innerHTML = sites.map(site => `
+    <div class="trusted-site-item">
+      <span class="site-name">${escapeHtml(site)}</span>
+      <button class="remove-btn" data-site="${escapeHtml(site)}" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+
+  // Add event listeners for remove buttons
+  elements.trustedSitesList.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const site = btn.getAttribute('data-site');
+      await untrustSite(site);
+    });
+  });
+}
+
+// Untrust a site
+async function untrustSite(hostname) {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'UNTRUST_SITE', hostname });
+    if (result.success) {
+      renderTrustedSites(result.trustedSites || []);
+      log('Site untrusted: ' + hostname);
+    }
+  } catch (e) {
+    log('Failed to untrust site: ' + e.message);
+  }
+}
+
+// Escape HTML helper
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // Save notification settings to background
@@ -250,6 +314,27 @@ async function getBackgroundActivity() {
       log(`Background: ${bgData.totalRequests} total requests`);
       // Store background activity data for reference
       detailData.backgroundActivity = bgData;
+    }
+
+    // Also fetch RPC history (persisted even when popup was closed)
+    const historyData = await chrome.runtime.sendMessage({ type: 'GET_RPC_HISTORY' });
+    if (historyData && historyData.history) {
+      // Merge with existing activity, avoid duplicates by timestamp
+      const existingTimestamps = new Set(config.activity.map(a => a.timestamp));
+      for (const item of historyData.history) {
+        if (!existingTimestamps.has(item.timestamp)) {
+          config.activity.push(item);
+        }
+      }
+      // Sort by timestamp descending
+      config.activity.sort((a, b) => b.timestamp - a.timestamp);
+      // Keep only last 100
+      if (config.activity.length > 100) {
+        config.activity = config.activity.slice(0, 100);
+      }
+      log(`Loaded ${historyData.history.length} RPC calls from history`);
+      // Re-render activity list if on activity page
+      renderActivityList();
     }
   } catch (e) {
     log('Failed to get background activity: ' + e.message);

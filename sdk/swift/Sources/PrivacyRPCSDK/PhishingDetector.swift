@@ -33,7 +33,7 @@ public class PhishingDetector {
         "phantom.app", "solflare.com", "backpack.app", "glow.app",
         // DEXs
         "jup.ag", "jupiter.ag", "raydium.io", "orca.so", "lifinity.io",
-        "meteora.ag", "phoenix.trade", "drift.trade", "zeta.markets",
+        "meteora.ag", "phoenix.trade", "drift.trade", "zeta.markets", "pump.fun",
         // DeFi
         "marinade.finance", "solend.fi", "mango.markets", "kamino.finance",
         "marginfi.com", "solblaze.org", "jito.network",
@@ -51,7 +51,7 @@ public class PhishingDetector {
     /// Known phishing domains
     private static let knownPhishing: Set<String> = [
         "phantom-wallet.app", "phantomm.app", "solanaa.com",
-        "jupiterr.ag", "magiceden.xyz"
+        "jupiterr.ag", "magiceden.xyz", "pump.fun-watch.dev"
     ]
 
     /// Homograph character mappings (Unicode lookalikes)

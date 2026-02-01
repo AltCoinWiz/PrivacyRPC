@@ -112,6 +112,9 @@ const LEGITIMATE_DOMAINS: Record<string, DomainInfo> = {
   'coinmarketcap.com': { name: 'CoinMarketCap', category: DomainCategory.DATA },
   'dexscreener.com': { name: 'DEX Screener', category: DomainCategory.DATA },
   'birdeye.so': { name: 'Birdeye', category: DomainCategory.DATA },
+
+  // Memecoin platforms
+  'pump.fun': { name: 'Pump.fun', category: DomainCategory.DEX },
 };
 
 // Known phishing domains
@@ -123,6 +126,8 @@ const KNOWN_PHISHING = new Set([
   'jupiter-airdrop.com',
   'free-solana.com',
   'claim-jupiter.com',
+  // pump.fun phishing
+  'pump.fun-watch.dev',
 ]);
 
 export class PhishingDetector {
@@ -260,6 +265,7 @@ export class PhishingDetector {
       { regex: /metamask[^a-z]/, legit: 'metamask.io', reason: 'Fake MetaMask site' },
       { regex: /jupiter[^a-z]/, legit: 'jup.ag', reason: 'Fake Jupiter site' },
       { regex: /raydium[^a-z]/, legit: 'raydium.io', reason: 'Fake Raydium site' },
+      { regex: /pump\.?fun[^a-z]/i, legit: 'pump.fun', reason: 'Fake pump.fun site' },
       { regex: /(airdrop|claim|free).*(solana|sol|jupiter|jup)/i, legit: null, reason: 'Airdrop scam' },
       { regex: /(solana|sol|jupiter|jup).*(airdrop|claim|free)/i, legit: null, reason: 'Airdrop scam' },
       { regex: /wallet.?connect.?(verify|validate|sync)/i, legit: null, reason: 'Wallet connect scam' },

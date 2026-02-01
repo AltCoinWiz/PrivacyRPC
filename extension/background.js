@@ -430,6 +430,7 @@ const DEFAULT_CONFIG = {
   torEnabled: false,
   torConnected: false,
   torIp: null,
+  trustedSites: [], // Sites where drainer warnings are suppressed
   stats: {
     proxiedRequests: 0,
     lastActivity: null
@@ -940,6 +941,128 @@ const WALLET_EXTENSIONS = {
   'gfkepgoophebjcgfkfgjbdkfgfcndbag': { name: 'TipLink Wallet', type: 'wallet' }
 };
 
+// ============================================================================
+// REPUTABLE SOLANA SITES - Global whitelist for phishing detection
+// These are the legitimate domains for popular Solana dApps
+// ============================================================================
+const REPUTABLE_SITES = {
+  // DEXs and Trading
+  'jup.ag': { name: 'Jupiter', category: 'DEX' },
+  'jupiter.ag': { name: 'Jupiter', category: 'DEX' },
+  'raydium.io': { name: 'Raydium', category: 'DEX' },
+  'orca.so': { name: 'Orca', category: 'DEX' },
+  'lifinity.io': { name: 'Lifinity', category: 'DEX' },
+
+  // Trading Terminals
+  'axiom.trade': { name: 'Axiom', category: 'Trading' },
+  'photon-sol.tinyastro.io': { name: 'Photon', category: 'Trading' },
+  'photon.trade': { name: 'Photon', category: 'Trading' },
+  'bullx.io': { name: 'BullX', category: 'Trading' },
+  'dexscreener.com': { name: 'DEX Screener', category: 'Analytics' },
+  'birdeye.so': { name: 'Birdeye', category: 'Analytics' },
+
+  // NFT Marketplaces
+  'magiceden.io': { name: 'Magic Eden', category: 'NFT' },
+  'tensor.trade': { name: 'Tensor', category: 'NFT' },
+  'hyperspace.xyz': { name: 'Hyperspace', category: 'NFT' },
+
+  // DeFi
+  'marinade.finance': { name: 'Marinade', category: 'DeFi' },
+  'meteora.ag': { name: 'Meteora', category: 'DeFi' },
+  'kamino.finance': { name: 'Kamino', category: 'DeFi' },
+  'drift.trade': { name: 'Drift', category: 'DeFi' },
+  'mango.markets': { name: 'Mango', category: 'DeFi' },
+  'marginfi.com': { name: 'MarginFi', category: 'DeFi' },
+  'sanctum.so': { name: 'Sanctum', category: 'DeFi' },
+  'solend.fi': { name: 'Solend', category: 'DeFi' },
+  'jito.network': { name: 'Jito', category: 'DeFi' },
+
+  // Memecoins / Launch
+  'pump.fun': { name: 'Pump.fun', category: 'Memecoin' },
+
+  // Wallets
+  'phantom.app': { name: 'Phantom', category: 'Wallet' },
+  'phantom.com': { name: 'Phantom', category: 'Wallet' },
+  'solflare.com': { name: 'Solflare', category: 'Wallet' },
+  'backpack.app': { name: 'Backpack', category: 'Wallet' },
+  'backpack.exchange': { name: 'Backpack', category: 'Wallet' },
+
+  // Infrastructure
+  'solana.com': { name: 'Solana', category: 'Infrastructure' },
+  'solscan.io': { name: 'Solscan', category: 'Explorer' },
+  'solana.fm': { name: 'Solana FM', category: 'Explorer' },
+  'explorer.solana.com': { name: 'Solana Explorer', category: 'Explorer' },
+  'helius.dev': { name: 'Helius', category: 'RPC' },
+  'helius.xyz': { name: 'Helius', category: 'RPC' }
+};
+
+// Levenshtein distance for typosquatting detection
+function levenshteinDistance(str1, str2) {
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+// Check if hostname is a potential typosquat of a reputable site
+function checkTyposquatting(hostname) {
+  // Extract base domain (remove www and common subdomains)
+  let domain = hostname.toLowerCase();
+  if (domain.startsWith('www.')) domain = domain.slice(4);
+
+  // Check if it's already a reputable site
+  if (REPUTABLE_SITES[domain]) {
+    return null; // It's the real site
+  }
+
+  // Check for close matches (typosquatting)
+  for (const [reputableDomain, info] of Object.entries(REPUTABLE_SITES)) {
+    const distance = levenshteinDistance(domain, reputableDomain);
+
+    // If very close (1-2 character difference) and similar length, likely typosquat
+    const lengthDiff = Math.abs(domain.length - reputableDomain.length);
+    if (distance <= 2 && lengthDiff <= 2 && distance > 0) {
+      return {
+        suspectedTyposquat: domain,
+        intendedSite: reputableDomain,
+        siteName: info.name,
+        category: info.category,
+        distance
+      };
+    }
+
+    // Check for common typosquatting patterns
+    // Pattern: adding/removing letters
+    if (domain.includes(reputableDomain.replace('.', '')) ||
+        reputableDomain.includes(domain.replace('.', ''))) {
+      if (domain !== reputableDomain) {
+        return {
+          suspectedTyposquat: domain,
+          intendedSite: reputableDomain,
+          siteName: info.name,
+          category: info.category,
+          distance
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 // Get ALL installed extensions
 async function getInstalledExtensions() {
   try {
@@ -1157,6 +1280,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(config.zkStats || DEFAULT_CONFIG.zkStats);
       break;
 
+    case 'GET_TRUSTED_SITES':
+      sendResponse({ trustedSites: config.trustedSites || [] });
+      break;
+
+    case 'TRUST_SITE':
+      if (message.hostname) {
+        const hostname = message.hostname.toLowerCase();
+        if (!config.trustedSites.includes(hostname)) {
+          config.trustedSites.push(hostname);
+          saveConfig();
+          console.log(`[PrivacyRPC] Site trusted: ${hostname}`);
+        }
+        sendResponse({ success: true, trustedSites: config.trustedSites });
+      } else {
+        sendResponse({ success: false, error: 'No hostname provided' });
+      }
+      break;
+
+    case 'UNTRUST_SITE':
+      if (message.hostname) {
+        const hostname = message.hostname.toLowerCase();
+        config.trustedSites = config.trustedSites.filter(s => s !== hostname);
+        saveConfig();
+        console.log(`[PrivacyRPC] Site untrusted: ${hostname}`);
+        sendResponse({ success: true, trustedSites: config.trustedSites });
+      } else {
+        sendResponse({ success: false, error: 'No hostname provided' });
+      }
+      break;
+
     case 'GET_TAB_ACTIVITY':
       const activity = tabActivity.get(message.tabId) || { rpcCalls: 0 };
       sendResponse(activity);
@@ -1190,6 +1343,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         activity: allActivity,
         totalRequests: config.stats.proxiedRequests,
         lastActivity: config.stats.lastActivity
+      });
+      break;
+
+    case 'GET_RPC_HISTORY':
+      // Return stored RPC activity history
+      sendResponse({
+        history: rpcActivityHistory,
+        total: rpcActivityHistory.length
       });
       break;
 
@@ -1258,6 +1419,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function handleNotificationAction(notificationId, action) {
   console.log(`[PrivacyRPC] Notification action: ${action} from ${notificationId}`);
 
+  // Handle trust_site:hostname format
+  if (action.startsWith('trust_site:')) {
+    const hostname = action.split(':')[1];
+    if (hostname && !config.trustedSites.includes(hostname)) {
+      config.trustedSites.push(hostname);
+      saveConfig();
+      console.log(`[PrivacyRPC] Site trusted via notification: ${hostname}`);
+      // Show confirmation
+      notificationHub.notify({
+        type: 'PROTECTION_ON',
+        title: 'Site Trusted',
+        message: `${hostname} will no longer show drainer warnings. Manage in extension settings.`,
+        actions: [
+          { label: 'Undo', action: `untrust_site:${hostname}` },
+          { label: 'OK', action: 'dismiss' }
+        ]
+      });
+    }
+    return;
+  }
+
+  // Handle untrust_site:hostname format (undo action)
+  if (action.startsWith('untrust_site:')) {
+    const hostname = action.split(':')[1];
+    if (hostname) {
+      config.trustedSites = config.trustedSites.filter(s => s !== hostname);
+      saveConfig();
+      console.log(`[PrivacyRPC] Site untrusted via notification: ${hostname}`);
+    }
+    return;
+  }
+
   switch (action) {
     case 'enable_protection':
       config.enabled = true;
@@ -1274,9 +1467,33 @@ function handleNotificationAction(notificationId, action) {
     case 'open_settings':
       chrome.action.openPopup();
       break;
+    case 'block_site':
+      // TODO: Implement site blocking
+      console.log('[PrivacyRPC] Block site requested - not yet implemented');
+      break;
+    case 'close_tab':
+      // Close the current tab (user clicked "Leave Site" on scam warning)
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        if (tab) {
+          chrome.tabs.remove(tab.id);
+          console.log('[PrivacyRPC] Closed tab due to scam warning');
+        }
+      });
+      break;
     case 'dismiss':
       // Just close the notification
       break;
+  }
+
+  // Handle navigate:url format (for typosquatting redirection)
+  if (action.startsWith('navigate:')) {
+    const url = action.slice(9);
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab) {
+        chrome.tabs.update(tab.id, { url });
+        console.log(`[PrivacyRPC] Navigating to safe site: ${url}`);
+      }
+    });
   }
 }
 
@@ -1351,6 +1568,11 @@ chrome.webRequest.onBeforeRequest.addListener(
       return;
     }
 
+    // DEBUG: Log all POST requests to help troubleshoot
+    if (details.method === 'POST') {
+      console.log('[PrivacyRPC DEBUG] POST request:', details.url, 'hasBody:', !!details.requestBody);
+    }
+
     const isRpc = isRpcUrl(details.url);
 
     // Also check if this looks like a JSON-RPC call (POST with JSON body to any URL)
@@ -1358,15 +1580,28 @@ chrome.webRequest.onBeforeRequest.addListener(
     let rpcMethod = null;
     if (details.method === 'POST' && details.requestBody) {
       try {
-        // Check if body contains JSON-RPC patterns
-        if (details.requestBody.raw) {
+        let body = null;
+
+        // Try to get body from raw (ArrayBuffer)
+        if (details.requestBody.raw && details.requestBody.raw[0] && details.requestBody.raw[0].bytes) {
           const decoder = new TextDecoder();
-          const body = decoder.decode(details.requestBody.raw[0].bytes);
+          body = decoder.decode(details.requestBody.raw[0].bytes);
+        }
+        // Fallback: try formData if raw not available
+        else if (details.requestBody.formData) {
+          body = JSON.stringify(details.requestBody.formData);
+        }
+
+        if (body) {
+          console.log('[PrivacyRPC DEBUG] Request body:', body.substring(0, 200));
+
           if (body.includes('jsonrpc') || body.includes('getBalance') ||
               body.includes('getAccountInfo') || body.includes('sendTransaction') ||
               body.includes('simulateTransaction') || body.includes('getRecentBlockhash') ||
-              body.includes('getLatestBlockhash') || body.includes('getSignatureStatuses')) {
+              body.includes('getLatestBlockhash') || body.includes('getSignatureStatuses') ||
+              body.includes('getTokenAccountsByOwner')) {
             isJsonRpc = true;
+            console.log('[PrivacyRPC DEBUG] JSON-RPC detected in body!');
 
             // Extract the RPC method name for pattern detection
             try {
@@ -1380,7 +1615,7 @@ chrome.webRequest.onBeforeRequest.addListener(
           }
         }
       } catch (e) {
-        // Ignore parsing errors
+        console.log('[PrivacyRPC DEBUG] Body parse error:', e.message);
       }
     }
 
@@ -1401,6 +1636,40 @@ chrome.webRequest.onBeforeRequest.addListener(
         activity.lastActivity = Date.now();
         activity.lastEndpoint = url.hostname;
         tabActivity.set(details.tabId, activity);
+
+        // Check for typosquatting ONLY when RPC detected and only once per tab
+        if (!typosquatWarnings.has(details.tabId)) {
+          chrome.tabs.get(details.tabId).then(tab => {
+            if (tab && tab.url) {
+              try {
+                const tabHostname = new URL(tab.url).hostname.toLowerCase();
+
+                // Skip if trusted
+                if (config.trustedSites && config.trustedSites.includes(tabHostname)) {
+                  return;
+                }
+
+                const typosquat = checkTyposquatting(tabHostname);
+                if (typosquat) {
+                  typosquatWarnings.set(details.tabId, true);
+                  console.log(`[PrivacyRPC] URL check: ${typosquat.suspectedTyposquat} similar to ${typosquat.intendedSite}`);
+
+                  notificationHub.notify({
+                    type: 'EXT_WARNING',
+                    title: 'Check URL',
+                    message: `This site looks similar to ${typosquat.siteName} (${typosquat.intendedSite}). Verify you're on the correct site.`,
+                    tabId: details.tabId,
+                    priority: 80,
+                    actions: [
+                      { label: 'Trust Site', action: `trust_site:${tabHostname}` },
+                      { label: 'Dismiss', action: 'dismiss' }
+                    ]
+                  });
+                }
+              } catch (e) {}
+            }
+          }).catch(() => {});
+        }
       }
 
       // Check if it's a ZK Compression method (based on URL patterns)
@@ -1414,68 +1683,88 @@ chrome.webRequest.onBeforeRequest.addListener(
 
       // Send activity to popup with actual RPC method name
       const now = Date.now();
+      const activityData = {
+        method: rpcMethod || (isJsonRpc ? 'JSON-RPC' : 'RPC'),
+        url: url.hostname + url.pathname.substring(0, 30),
+        success: true,
+        timestamp: now,
+        proxied: config.enabled,
+        tabId: details.tabId,
+        isZk: isZkCall
+      };
+
+      // Store in history (keep last 100)
+      rpcActivityHistory.unshift(activityData);
+      if (rpcActivityHistory.length > 100) rpcActivityHistory.pop();
+
       chrome.runtime.sendMessage({
         type: 'RPC_ACTIVITY',
-        data: {
-          method: rpcMethod || (isJsonRpc ? 'JSON-RPC' : 'RPC'),
-          url: url.hostname + url.pathname.substring(0, 30),
-          success: true,
-          timestamp: now,
-          proxied: config.enabled,
-          tabId: details.tabId,
-          isZk: isZkCall
-        }
+        data: activityData
       }).catch(() => {}); // Ignore if popup not open
 
       // DRAINER PATTERN DETECTION - analyze RPC method sequence
       if (details.tabId && details.tabId > 0 && rpcMethod) {
-        const warnings = analyzeRpcMethod(details.tabId, rpcMethod, now);
-        if (warnings && warnings.length > 0) {
-          for (const warning of warnings) {
-            notificationHub.notify({
-              type: 'SUSPICIOUS_RPC',
-              title: warning.title,
-              message: warning.message,
-              tabId: details.tabId,
-              actions: [
-                { label: 'Block Site', action: 'block_site' },
-                { label: 'Dismiss', action: 'dismiss' }
-              ]
-            });
-            console.log(`[PrivacyRPC] DRAINER WARNING: ${warning.title} - ${warning.message}`);
+        // Check if site is trusted before sending drainer warnings
+        chrome.tabs.get(details.tabId).then(tab => {
+          if (tab && tab.url) {
+            try {
+              const tabHostname = new URL(tab.url).hostname.toLowerCase();
+
+              // Skip warnings for trusted sites
+              if (config.trustedSites && config.trustedSites.includes(tabHostname)) {
+                console.log(`[PrivacyRPC] Skipping drainer check for trusted site: ${tabHostname}`);
+                return;
+              }
+
+              const warnings = analyzeRpcMethod(details.tabId, rpcMethod, now);
+              if (warnings && warnings.length > 0) {
+                for (const warning of warnings) {
+                  notificationHub.notify({
+                    type: 'SUSPICIOUS_RPC',
+                    title: warning.title,
+                    message: warning.message,
+                    tabId: details.tabId,
+                    actions: [
+                      { label: 'Trust Site', action: `trust_site:${tabHostname}` },
+                      { label: 'Block Site', action: 'block_site' },
+                      { label: 'Dismiss', action: 'dismiss' }
+                    ]
+                  });
+                  console.log(`[PrivacyRPC] DRAINER WARNING: ${warning.title} - ${warning.message}`);
+                }
+              }
+            } catch (e) {
+              console.log('[PrivacyRPC] Could not get tab hostname:', e);
+            }
           }
-        }
+        }).catch(() => {});
       }
 
-      // Fallback: simple call count detection (if method parsing failed)
-      if (details.tabId && details.tabId > 0 && !rpcMethod) {
-        const activity = tabActivity.get(details.tabId);
-        if (activity && activity.rpcCalls > 10) {
-          notificationHub.notify({
-            type: 'SUSPICIOUS_RPC',
-            title: 'High RPC Activity',
-            message: `${activity.rpcCalls} RPC calls from ${url.hostname}`,
-            tabId: details.tabId,
-            actions: [
-              { label: 'View Details', action: 'open_settings' },
-              { label: 'Dismiss', action: 'dismiss' }
-            ]
-          });
-        }
-      }
+      // NOTE: Removed generic "High RPC Activity" warning - it was too noisy.
+      // Legitimate DeFi apps make hundreds of RPC calls.
+      // Drainer pattern detection (above) is smarter and more targeted.
 
       // Notify if RPC detected but protection is off
       if (!config.enabled && details.tabId > 0) {
-        notificationHub.notify({
-          type: 'UNPROTECTED_DAPP',
-          title: 'Unprotected dApp Detected',
-          message: `RPC calls to ${url.hostname} are not protected`,
-          tabId: details.tabId,
-          actions: [
-            { label: 'Enable Protection', action: 'enable_protection' },
-            { label: 'Dismiss', action: 'dismiss' }
-          ]
-        });
+        // Get tab hostname for trust option
+        chrome.tabs.get(details.tabId).then(tab => {
+          if (tab && tab.url) {
+            try {
+              const tabHostname = new URL(tab.url).hostname.toLowerCase();
+              notificationHub.notify({
+                type: 'UNPROTECTED_DAPP',
+                title: 'Unprotected dApp Detected',
+                message: `RPC calls to ${url.hostname} are not protected`,
+                tabId: details.tabId,
+                actions: [
+                  { label: 'Enable Protection', action: 'enable_protection' },
+                  { label: 'Trust Site', action: `trust_site:${tabHostname}` },
+                  { label: 'Dismiss', action: 'dismiss' }
+                ]
+              });
+            } catch (e) {}
+          }
+        }).catch(() => {});
       }
 
       console.log('[PrivacyRPC] RPC detected:', url.hostname, config.enabled ? '(proxied)' : '(direct)');
@@ -1487,6 +1776,9 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 // Track RPC activity per tab
 const tabActivity = new Map();
+
+// Store recent RPC activity history (persists even when popup is closed)
+const rpcActivityHistory = [];
 
 // ============================================================================
 // DRAINER PATTERN DETECTION
@@ -1551,10 +1843,34 @@ function analyzeRpcMethod(tabId, method, timestamp) {
   const warnings = [];
   const timeSinceFirst = timestamp - state.firstCallTime;
 
+  // NOTE: We don't permanently suppress warnings anymore.
+  // Warnings will re-fire until user clicks "Trust Site" (which adds to trustedSites).
+  // NotificationHub throttling (30 sec cooldown) prevents spam.
+
+  // Pattern 0: Immediate balance check (getBalance within 2 seconds of page load)
+  // Drainers immediately check your balance before you've even interacted
+  if (method.includes('getBalance') && timeSinceFirst < 2000) {
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Immediate Balance Check',
+      message: 'Site checked your wallet balance immediately on load - common drainer behavior',
+      severity: 'medium'
+    });
+  }
+
+  // Pattern 0b: Immediate token enumeration (getTokenAccountsByOwner within 3 seconds)
+  if (method.includes('getTokenAccountsByOwner') && timeSinceFirst < 3000) {
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Immediate Token Scan',
+      message: 'Site scanned all your tokens immediately on load - verify this is expected',
+      severity: 'medium'
+    });
+  }
+
   // Pattern 1: Rapid asset enumeration (5+ enumeration calls in 5 seconds)
   const recentEnumCalls = state.enumerationCalls.filter(c => timestamp - c.timestamp < 5000);
-  if (recentEnumCalls.length >= 5 && !state.warnings.includes('rapid_enumeration')) {
-    state.warnings.push('rapid_enumeration');
+  if (recentEnumCalls.length >= 5) {
     warnings.push({
       type: 'DRAINER_PATTERN',
       title: 'Drainer Pattern: Asset Scan',
@@ -1566,8 +1882,7 @@ function analyzeRpcMethod(tabId, method, timestamp) {
   // Pattern 2: getTokenAccountsByOwner followed by multiple getAccountInfo (checking token values)
   const hasTokenEnum = state.enumerationCalls.some(c => c.method.includes('getTokenAccountsByOwner'));
   const accountInfoCount = state.enumerationCalls.filter(c => c.method.includes('getAccountInfo')).length;
-  if (hasTokenEnum && accountInfoCount >= 3 && !state.warnings.includes('token_value_check')) {
-    state.warnings.push('token_value_check');
+  if (hasTokenEnum && accountInfoCount >= 3) {
     warnings.push({
       type: 'DRAINER_PATTERN',
       title: 'Drainer Pattern: Token Check',
@@ -1577,8 +1892,7 @@ function analyzeRpcMethod(tabId, method, timestamp) {
   }
 
   // Pattern 3: Quick transaction after page load (TX within 10 seconds of first RPC)
-  if (state.txExecCalls.length > 0 && timeSinceFirst < 10000 && !state.warnings.includes('quick_tx')) {
-    state.warnings.push('quick_tx');
+  if (state.txExecCalls.length > 0 && timeSinceFirst < 10000) {
     warnings.push({
       type: 'DRAINER_PATTERN',
       title: 'Quick Transaction Attempt',
@@ -1590,13 +1904,24 @@ function analyzeRpcMethod(tabId, method, timestamp) {
   // Pattern 4: Full drainer sequence (enumeration → prep → exec)
   if (state.enumerationCalls.length >= 3 &&
       state.txPrepCalls.length >= 1 &&
-      state.txExecCalls.length >= 1 &&
-      !state.warnings.includes('full_drainer')) {
-    state.warnings.push('full_drainer');
+      state.txExecCalls.length >= 1) {
     warnings.push({
       type: 'DRAINER_PATTERN',
       title: 'DRAINER DETECTED',
       message: 'Classic drainer pattern: scanned assets → prepared transaction → requesting signature',
+      severity: 'critical'
+    });
+  }
+
+  // Pattern 5: Multiple simulateTransaction calls (testing multiple token drains)
+  const recentSimulations = state.txExecCalls.filter(c =>
+    c.method.includes('simulateTransaction') && timestamp - c.timestamp < 10000
+  );
+  if (recentSimulations.length >= 3) {
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Multi-Token Drain Attempt',
+      message: `Site simulated ${recentSimulations.length} transactions rapidly - may be testing which tokens to steal`,
       severity: 'critical'
     });
   }
@@ -1637,6 +1962,9 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   notifyPopupTabChange(tab);
 });
 
+// Track which tabs have already been warned about typosquatting
+const typosquatWarnings = new Map();
+
 // Listen for URL changes within a tab
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === 'complete') {
@@ -1650,6 +1978,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       });
       // Clear drainer detection state for fresh analysis
       clearDrainerState(tabId);
+      // Clear typosquat warning for this tab on navigation
+      typosquatWarnings.delete(tabId);
     }
   }
 });
