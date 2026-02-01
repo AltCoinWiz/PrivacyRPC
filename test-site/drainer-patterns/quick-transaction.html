@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Magic Eden - NFT Marketplace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #e42575; }
+    .card {
+      background: #1a1a1a;
+      border-radius: 16px;
+      padding: 30px;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .nft-card {
+      background: #252525;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .nft-image {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Magic Eden</div>
+
+    <div class="test-info">
+      <h4>TEST: Quick Transaction Request</h4>
+      <p>This page requests sendTransaction within 3 seconds of loading - before user has time to review. PrivacyRPC should show "Quick Transfer Attempt" warning.</p>
+    </div>
+
+    <div class="card">
+      <div class="nft-card">
+        <div class="nft-image"></div>
+        <h3>Mad Lads #4269</h3>
+        <p style="color: #888;">Floor: 45 SOL</p>
+      </div>
+      <p style="color: #888;">Processing your purchase...</p>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    const RPC_URL = 'http://localhost:3333/mock-rpc';
+    const pageLoadTime = Date.now();
+
+    async function rpcCall(method, params = []) {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params
+        })
+      });
+      return res.json();
+    }
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.innerHTML += msg + '<br>';
+    }
+
+    // Quick transaction attempt - fires sendTransaction within 3 seconds
+    (async function quickTransaction() {
+      log('Page loaded, starting quick transaction flow...');
+      log('');
+
+      // Small delay to seem legitimate, but still under 5 seconds
+      await new Promise(r => setTimeout(r, 1500));
+
+      log(`[+${Date.now() - pageLoadTime}ms] getLatestBlockhash`);
+      await rpcCall('getLatestBlockhash');
+
+      log(`[+${Date.now() - pageLoadTime}ms] simulateTransaction`);
+      await rpcCall('simulateTransaction', ['FAKE_TX_BASE64']);
+
+      // This is the suspicious part - sendTransaction without user clicking anything
+      log(`[+${Date.now() - pageLoadTime}ms] sendTransaction (NO USER ACTION!)`);
+      await rpcCall('sendTransaction', ['FAKE_SIGNED_TX']);
+
+      log('');
+      log('=== TRANSACTION SENT ===');
+      log(`Time since page load: ${Date.now() - pageLoadTime}ms`);
+      log('');
+      log('PrivacyRPC should detect:');
+      log('- "Quick Transfer Attempt" warning');
+      log('- sendTransaction within 5 seconds of load');
+    })();
+  </script>
+</body>
+</html>

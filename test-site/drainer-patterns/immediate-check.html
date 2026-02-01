@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Raydium - Solana AMM</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #5865F2; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Raydium</div>
+
+    <div class="test-info">
+      <h4>TEST: Immediate Balance Check</h4>
+      <p>This page fires getBalance and getTokenAccountsByOwner within 100ms of page load - before user even interacts. This triggers the "Immediate Wallet Check" warning in PrivacyRPC.</p>
+    </div>
+
+    <div class="card">
+      <h2>Loading your assets...</h2>
+      <p style="color: #888; margin-top: 10px;">Please wait while we scan your wallet</p>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    const RPC_URL = 'http://localhost:3333/mock-rpc';
+    const TEST_WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+
+    async function rpcCall(method, params = []) {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params
+        })
+      });
+      return res.json();
+    }
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.innerHTML += msg + '<br>';
+    }
+
+    // IMMEDIATELY on page load - no user interaction required
+    // This is suspicious behavior that drainers use
+    const pageLoadTime = Date.now();
+
+    (async function immediateWalletCheck() {
+      log(`Page loaded at: ${pageLoadTime}`);
+      log('');
+      log('=== IMMEDIATE WALLET SCAN (NO USER ACTION) ===');
+      log('');
+
+      // Fire balance check within first 100ms
+      log(`[+${Date.now() - pageLoadTime}ms] getBalance`);
+      await rpcCall('getBalance', [TEST_WALLET]);
+
+      log(`[+${Date.now() - pageLoadTime}ms] getTokenAccountsByOwner`);
+      await rpcCall('getTokenAccountsByOwner', [TEST_WALLET, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }]);
+
+      log(`[+${Date.now() - pageLoadTime}ms] getAccountInfo`);
+      await rpcCall('getAccountInfo', [TEST_WALLET]);
+
+      log('');
+      log('=== SCAN COMPLETE ===');
+      log(`Total time: ${Date.now() - pageLoadTime}ms`);
+      log('');
+      log('PrivacyRPC should detect:');
+      log('- "Immediate Wallet Check" warning');
+      log('- Balance check within 2 seconds of load');
+    })();
+  </script>
+</body>
+</html>

@@ -22,7 +22,14 @@
       "matches": ["<all_urls>"],
       "js": ["content/contentScript.js"],
       "css": ["content/overlayStyles.css"],
-      "run_at": "document_idle"
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/injected.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "action": {

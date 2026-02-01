@@ -352,6 +352,8 @@ const DEFAULT_CONFIG = {
   proxyHost: '127.0.0.1',
   proxyPort: 8899,
   proxyType: 'HTTP', // HTTP or SOCKS5
+  proxyMode: 'proxy_only', // 'proxy_only' or 'private_rpc'
+  rpcEndpoint: null, // User's private RPC endpoint (Helius, etc.)
   stats: {
     proxiedRequests: 0,
     lastActivity: null
@@ -650,30 +652,65 @@ async function saveConfig() {
 
 // Check if proxy is running
 async function checkProxyHealth() {
-  // Use native messaging to check - Chrome blocks direct localhost fetch
-  return new Promise((resolve) => {
-    try {
-      const port = connectNativeHost();
-      if (!port) {
-        resolve({ running: false, error: 'No native host connection' });
-        return;
-      }
+  // Check proxy health via HTTP fetch to /config endpoint
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
 
-      const timeout = setTimeout(() => {
-        pendingStatusResolve = null;
-        resolve({ running: false, error: 'Timeout' });
-      }, 3000);
+    const response = await fetch(`http://${config.proxyHost}:${config.proxyPort}/config`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
+    });
 
-      pendingStatusResolve = (result) => {
-        clearTimeout(timeout);
-        resolve(result);
-      };
+    clearTimeout(timeout);
 
-      port.postMessage({ action: 'status' });
-    } catch (error) {
-      resolve({ running: false, error: error.message });
+    if (response.ok) {
+      const data = await response.json();
+      return { running: true, status: 'running', ...data };
+    } else {
+      return { running: false, error: `HTTP ${response.status}` };
     }
-  });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return { running: false, error: 'Timeout' };
+    }
+    return { running: false, error: error.message };
+  }
+}
+
+// Fetch config from proxy server (mode, RPC endpoint, etc.)
+async function fetchProxyConfig() {
+  try {
+    const response = await fetch(`http://${config.proxyHost}:${config.proxyPort}/config`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (response.ok) {
+      const proxyConfig = await response.json();
+
+      // Update our config with proxy settings
+      config.proxyMode = proxyConfig.mode || 'proxy_only';
+      config.rpcEndpoint = proxyConfig.rpcEndpoint || null;
+
+      console.log('[PrivacyRPC] Proxy config:', proxyConfig);
+
+      // Notify popup of config change
+      chrome.runtime.sendMessage({
+        type: 'CONFIG_UPDATED',
+        data: {
+          mode: config.proxyMode,
+          rpcEndpoint: config.rpcEndpoint
+        }
+      }).catch(() => {}); // Ignore if popup not open
+
+      return proxyConfig;
+    }
+  } catch (e) {
+    console.log('[PrivacyRPC] Could not fetch proxy config:', e.message);
+  }
+  return null;
 }
 
 // Known wallet extension IDs
@@ -846,6 +883,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
+    case 'SET_AUTO_BLOCK':
+      chrome.storage.local.set({ autoBlockEnabled: message.enabled });
+      sendResponse({ success: true });
+      break;
+
+    case 'GET_AUTO_BLOCK':
+      chrome.storage.local.get(['autoBlockEnabled'], (result) => {
+        sendResponse({ enabled: result.autoBlockEnabled || false });
+      });
+      return true;
+
     case 'START_PROXY':
       startProxyServer().then(result => {
         sendResponse({ success: result });
@@ -880,6 +928,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'CHECK_PROXY':
       checkProxyHealth().then(result => {
         sendResponse(result);
+      });
+      return true; // Keep channel open for async response
+
+    case 'GET_PROXY_CONFIG':
+      fetchProxyConfig().then(result => {
+        sendResponse({
+          mode: config.proxyMode,
+          rpcEndpoint: config.rpcEndpoint,
+          ...result
+        });
       });
       return true; // Keep channel open for async response
 
@@ -957,6 +1015,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }).then(result => {
         sendResponse(result);
       });
+      return true; // Keep channel open for async
+
+    case 'SHOW_TX_OVERLAY_REQUEST':
+      // Request to show transaction overlay from a page
+      chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+        if (tab) {
+          try {
+            const response = await chrome.tabs.sendMessage(tab.id, {
+              type: 'SHOW_DECODED_TX',
+              decoded: message.decoded
+            });
+            sendResponse(response);
+          } catch (e) {
+            sendResponse({ error: e.message });
+          }
+        } else {
+          sendResponse({ error: 'No active tab' });
+        }
+      });
+      return true; // Keep channel open for async
+
+    case 'DECODE_TRANSACTION':
+      // Decode a transaction via the proxy
+      fetch(`http://${config.proxyHost}:${config.proxyPort}/decode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction: message.transaction })
+      })
+        .then(r => r.json())
+        .then(result => sendResponse(result))
+        .catch(e => sendResponse({ success: false, error: e.message }));
       return true; // Keep channel open for async
   }
 });
@@ -1174,7 +1263,13 @@ async function initialize() {
 
   await loadConfig();
   await applyProxySettings();
-  console.log('[PrivacyRPC] Extension initialized, enabled:', config.enabled);
+
+  // Fetch proxy config if enabled
+  if (config.enabled) {
+    await fetchProxyConfig();
+  }
+
+  console.log('[PrivacyRPC] Extension initialized, enabled:', config.enabled, 'mode:', config.proxyMode);
 }
 
 // Listen for tab changes
@@ -1240,5 +1335,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
 
     lastProxyStatus = currentStatus;
+
+    // Also fetch proxy config to check mode/endpoint
+    if (currentStatus) {
+      await fetchProxyConfig();
+    }
   }
 });

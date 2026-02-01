@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test dApp - PrivacyRPC Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    .subtitle { color: #7D7D7D; margin-bottom: 32px; }
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #1E2328;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 { font-size: 18px; margin-bottom: 12px; color: #5AF5F5; }
+    .card p { color: #9D9D9D; margin-bottom: 16px; line-height: 1.5; }
+    .btn {
+      display: inline-block;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      margin-right: 12px;
+      margin-bottom: 12px;
+    }
+    .btn-primary { background: #5AF5F5; color: #0a0a0a; }
+    .btn-primary:hover { background: #7FF7F7; box-shadow: 0 0 24px rgba(90, 245, 245, 0.4); }
+    .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; box-shadow: none; }
+    .btn-danger { background: #FF4757; color: #fff; }
+    .btn-danger:hover { background: #FF5A68; box-shadow: 0 0 24px rgba(255, 71, 87, 0.4); }
+    .btn-secondary { background: #1E2328; color: #9D9D9D; }
+    .btn-secondary:hover { background: #2A3038; color: #fff; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+    }
+    .status-connected { background: rgba(90, 245, 245, 0.2); color: #5AF5F5; }
+    .status-connected .status-dot { background: #5AF5F5; }
+    .status-disconnected { background: rgba(255, 71, 87, 0.2); color: #FF4757; }
+    .status-disconnected .status-dot { background: #FF4757; }
+    .wallet-address {
+      font-family: monospace;
+      font-size: 12px;
+      color: #7D7D7D;
+      background: #1E2328;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-top: 8px;
+      word-break: break-all;
+    }
+    .input-group { margin-bottom: 16px; }
+    .input-group label { display: block; font-size: 13px; color: #7D7D7D; margin-bottom: 6px; }
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      background: #1E2328;
+      border: 1px solid #2A3038;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .input-group input:focus { outline: none; border-color: #5AF5F5; }
+    .log {
+      background: #0a0a0a;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 16px;
+    }
+    .log-entry { padding: 4px 0; border-bottom: 1px solid #1E2328; }
+    .log-entry.success { color: #5AF5F5; }
+    .log-entry.error { color: #FF4757; }
+    .log-entry.warning { color: #FFB800; }
+    .warning-box {
+      background: rgba(255, 184, 0, 0.1);
+      border: 1px solid rgba(255, 184, 0, 0.3);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .warning-box h3 { color: #FFB800; font-size: 14px; margin-bottom: 8px; }
+    .warning-box p { color: #9D9D9D; font-size: 13px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Test dApp</h1>
+    <p class="subtitle">Test PrivacyRPC wallet interception</p>
+
+    <div class="warning-box">
+      <h3>Use Devnet Only</h3>
+      <p>Switch your wallet to Devnet before testing. This page will attempt real transactions. Use a burner wallet with devnet SOL only.</p>
+    </div>
+
+    <div class="card">
+      <h2>1. Connect Wallet</h2>
+      <div id="walletStatus" class="status status-disconnected">
+        <span class="status-dot"></span>
+        <span>Not Connected</span>
+      </div>
+      <div id="walletAddress" class="wallet-address" style="display: none;"></div>
+      <br>
+      <button id="connectBtn" class="btn btn-primary" onclick="connectWallet()">Connect Phantom</button>
+      <button class="btn btn-secondary" onclick="disconnectWallet()">Disconnect</button>
+    </div>
+
+    <div class="card">
+      <h2>2. Test SOL Transfer</h2>
+      <p>Send a small amount of SOL. PrivacyRPC should intercept and show the decoded transaction before Phantom.</p>
+      <div class="input-group">
+        <label>Recipient Address</label>
+        <input type="text" id="recipientAddress" placeholder="Enter Solana address..." value="11111111111111111111111111111111">
+      </div>
+      <div class="input-group">
+        <label>Amount (SOL)</label>
+        <input type="number" id="sendAmount" placeholder="0.001" value="0.001" step="0.001" min="0">
+      </div>
+      <button id="sendBtn" class="btn btn-primary" onclick="sendTransaction()" disabled>Send SOL</button>
+    </div>
+
+    <div class="card">
+      <h2>3. Test Interception Directly</h2>
+      <p>Trigger the interceptor with a sample transaction (no wallet needed).</p>
+      <button class="btn btn-secondary" onclick="testInterceptor()">Test Interceptor</button>
+    </div>
+
+    <div class="card">
+      <h2>Activity Log</h2>
+      <div id="log" class="log">
+        <div class="log-entry">Ready. Connect wallet to begin.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Solana Web3.js from CDN -->
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+
+  <script>
+    let wallet = null;
+    let connection = null;
+
+    // Initialize Solana connection (Devnet)
+    function initConnection() {
+      connection = new solanaWeb3.Connection(
+        'https://api.devnet.solana.com',
+        'confirmed'
+      );
+      log('Connected to Solana Devnet');
+    }
+
+    // Logging
+    function log(message, type = '') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.insertBefore(entry, logEl.firstChild);
+    }
+
+    // Update UI based on wallet state
+    function updateUI() {
+      const statusEl = document.getElementById('walletStatus');
+      const addressEl = document.getElementById('walletAddress');
+      const sendBtn = document.getElementById('sendBtn');
+      const connectBtn = document.getElementById('connectBtn');
+
+      if (wallet && wallet.publicKey) {
+        statusEl.className = 'status status-connected';
+        statusEl.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
+        addressEl.textContent = wallet.publicKey.toString();
+        addressEl.style.display = 'block';
+        sendBtn.disabled = false;
+        connectBtn.textContent = 'Connected';
+      } else {
+        statusEl.className = 'status status-disconnected';
+        statusEl.innerHTML = '<span class="status-dot"></span><span>Not Connected</span>';
+        addressEl.style.display = 'none';
+        sendBtn.disabled = true;
+        connectBtn.textContent = 'Connect Phantom';
+      }
+    }
+
+    // Connect wallet
+    async function connectWallet() {
+      try {
+        if (!window.solana) {
+          log('Phantom wallet not found. Please install it.', 'error');
+          return;
+        }
+
+        log('Connecting to Phantom...');
+        const resp = await window.solana.connect();
+        wallet = window.solana;
+        log(`Connected: ${resp.publicKey.toString().substring(0, 8)}...`, 'success');
+        updateUI();
+
+        // Check balance
+        if (connection && wallet.publicKey) {
+          const balance = await connection.getBalance(wallet.publicKey);
+          log(`Balance: ${(balance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+        }
+      } catch (e) {
+        log(`Connection failed: ${e.message}`, 'error');
+      }
+    }
+
+    // Disconnect wallet
+    function disconnectWallet() {
+      if (window.solana) {
+        window.solana.disconnect();
+      }
+      wallet = null;
+      log('Wallet disconnected');
+      updateUI();
+    }
+
+    // Send transaction
+    async function sendTransaction() {
+      if (!wallet || !wallet.publicKey) {
+        log('Please connect wallet first', 'error');
+        return;
+      }
+
+      const recipientStr = document.getElementById('recipientAddress').value.trim();
+      const amount = parseFloat(document.getElementById('sendAmount').value);
+
+      if (!recipientStr || !amount || amount <= 0) {
+        log('Invalid recipient or amount', 'error');
+        return;
+      }
+
+      try {
+        log('Creating transaction...');
+        log('PrivacyRPC should intercept this!', 'warning');
+
+        const recipient = new solanaWeb3.PublicKey(recipientStr);
+        const lamports = Math.round(amount * solanaWeb3.LAMPORTS_PER_SOL);
+
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(
+          solanaWeb3.SystemProgram.transfer({
+            fromPubkey: wallet.publicKey,
+            toPubkey: recipient,
+            lamports: lamports
+          })
+        );
+
+        // Get recent blockhash
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet.publicKey;
+
+        log(`Requesting signature for ${amount} SOL transfer...`);
+        log('>>> PrivacyRPC overlay should appear NOW <<<', 'warning');
+
+        // This is where PrivacyRPC intercepts!
+        const signed = await wallet.signTransaction(transaction);
+
+        log('Transaction signed! Sending to network...', 'success');
+
+        // Send the signed transaction
+        const signature = await connection.sendRawTransaction(signed.serialize());
+        log(`Transaction sent! Signature: ${signature.substring(0, 20)}...`, 'success');
+
+        // Wait for confirmation
+        await connection.confirmTransaction(signature);
+        log('Transaction confirmed!', 'success');
+
+      } catch (e) {
+        if (e.message.includes('rejected')) {
+          log('Transaction rejected by PrivacyRPC or user', 'warning');
+        } else {
+          log(`Error: ${e.message}`, 'error');
+        }
+      }
+    }
+
+    // Test interceptor directly (no wallet needed)
+    async function testInterceptor() {
+      log('Testing interceptor with sample transaction...');
+
+      // Sample base64 transaction
+      const sampleTx = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACAyZJSMbBpFRJGvbU3zwQ7hf8S8t8kGqTZ1uMq/q+HK0bBpuIV/6rgYT3aH3OXz6tqzDgBn2N7AYj8M2+qMm4uAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/xLf+SLnhwVZKtvAywAAAAAAAAAAAAAAAAAAAAAAAQICAAEMAgAAAACUNXcAAAAA';
+
+      if (window.__privacyRpcTestIntercept) {
+        try {
+          log('Calling interceptor...', 'warning');
+          const result = await window.__privacyRpcTestIntercept(sampleTx);
+          if (result && result.approved) {
+            log('Interceptor test: APPROVED', 'success');
+          } else {
+            log('Interceptor test: REJECTED', 'warning');
+          }
+        } catch (e) {
+          log(`Interceptor test error: ${e.message}`, 'error');
+        }
+      } else {
+        log('Interceptor not loaded. Is PrivacyRPC extension installed?', 'error');
+      }
+    }
+
+    // Initialize on load
+    window.addEventListener('load', () => {
+      initConnection();
+      updateUI();
+
+      // Check if wallet already connected
+      if (window.solana && window.solana.isConnected) {
+        wallet = window.solana;
+        updateUI();
+        log('Wallet already connected');
+      }
+
+      // Listen for wallet events
+      if (window.solana) {
+        window.solana.on('connect', () => {
+          wallet = window.solana;
+          updateUI();
+          log('Wallet connected');
+        });
+        window.solana.on('disconnect', () => {
+          wallet = null;
+          updateUI();
+          log('Wallet disconnected');
+        });
+      }
+    });
+  </script>
+</body>
+</html>

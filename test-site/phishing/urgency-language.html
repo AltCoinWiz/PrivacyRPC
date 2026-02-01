@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>EXCLUSIVE $JUP AIRDROP - CLAIM NOW!</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 600px; margin: 0 auto; text-align: center; }
+    .urgent-banner {
+      background: linear-gradient(90deg, #ff416c, #ff4b2b);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    .countdown {
+      font-size: 48px;
+      font-weight: bold;
+      margin: 30px 0;
+      color: #ff4757;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 36px; margin-bottom: 16px; }
+    .amount {
+      font-size: 64px;
+      font-weight: bold;
+      color: #00d4aa;
+      margin: 20px 0;
+    }
+    .btn {
+      padding: 20px 60px;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a080 100%);
+      border: none;
+      border-radius: 12px;
+      color: #000;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      animation: bounce 0.5s infinite alternate;
+    }
+    @keyframes bounce {
+      from { transform: scale(1); }
+      to { transform: scale(1.05); }
+    }
+    .scarcity {
+      margin-top: 20px;
+      color: #ff4757;
+      font-size: 18px;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      text-align: left;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="test-info">
+      <h4>TEST: Urgency/Scam Language Detection</h4>
+      <p>This page contains multiple scam signals: countdown timer, "limited time", "only X left", "act now", excessive exclamation marks. PrivacyRPC should flag urgency language patterns.</p>
+    </div>
+
+    <div class="urgent-banner">
+      LIMITED TIME OFFER - EXPIRES SOON!
+    </div>
+
+    <div class="card">
+      <h1>EXCLUSIVE $JUP AIRDROP!</h1>
+      <p style="color: #888;">You've been selected for an exclusive Jupiter airdrop!</p>
+
+      <div class="amount">5,000 $JUP</div>
+
+      <div class="countdown" id="countdown">04:59</div>
+      <p style="color: #ff4757; margin-bottom: 30px;">HURRY! Claim expires in:</p>
+
+      <button class="btn">CLAIM NOW!</button>
+
+      <p class="scarcity">Only 47 claims remaining! Act now or miss out forever!</p>
+    </div>
+  </div>
+
+  <script>
+    // Fake countdown timer (scam pattern)
+    let time = 299;
+    setInterval(() => {
+      time--;
+      if (time < 0) time = 299;
+      const mins = Math.floor(time / 60);
+      const secs = time % 60;
+      document.getElementById('countdown').textContent =
+        `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+  </script>
+</body>
+</html>

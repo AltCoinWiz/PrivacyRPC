@@ -6,12 +6,15 @@
 // State
 let config = {
   enabled: false,
+  autoBlock: false, // Auto-block all transactions without prompt
   torEnabled: false,
   torConnected: false,
   torIp: null,
   customRpc: '',
   proxyHost: '127.0.0.1',
   proxyPort: 8899,
+  proxyMode: 'proxy_only', // 'proxy_only' or 'private_rpc'
+  rpcEndpoint: null, // Endpoint from desktop app
   alerts: [],
   activity: [],
   recentScans: [],
@@ -44,6 +47,14 @@ let notificationSettings = {
 // DOM Elements - initialized after DOM is ready
 let elements = {};
 
+// Suspicious activity tracking
+let suspiciousActivityState = {
+  firstRpcTime: null,
+  pageLoadTime: Date.now(),
+  balanceCheckCount: 0,
+  transferAttempts: 0
+};
+
 // Store detailed data for sites and extensions
 let detailData = {
   currentSite: null,
@@ -54,9 +65,10 @@ let detailData = {
 // Initialize DOM elements
 function initElements() {
   elements = {
-    // Header
-    headerDot: document.getElementById('headerDot'),
-    headerStatus: document.getElementById('headerStatus'),
+    // Header Status Lights
+    proxyDot: document.getElementById('proxyDot'),
+    rpcDot: document.getElementById('rpcDot'),
+    torHeaderDot: document.getElementById('torHeaderDot'),
     openSidePanel: document.getElementById('openSidePanel'),
     openPopout: document.getElementById('openPopout'),
 
@@ -65,6 +77,8 @@ function initElements() {
     statusIcon: document.getElementById('statusIcon'),
     statusTitle: document.getElementById('statusTitle'),
     statusSubtitle: document.getElementById('statusSubtitle'),
+    modeBadge: document.getElementById('modeBadge'),
+    modeIndicator: document.getElementById('modeIndicator'),
 
     // Current site
     siteName: document.getElementById('siteName'),
@@ -73,11 +87,15 @@ function initElements() {
 
     // Toggles
     toggleProtection: document.getElementById('toggleProtection'),
-    toggleTor: document.getElementById('toggleTor'),
     torStatus: document.getElementById('torStatus'),
-    torSpinner: document.getElementById('torSpinner'),
-    torStatusText: document.getElementById('torStatusText'),
+    torDot: document.getElementById('torDot'),
+    torLabel: document.getElementById('torLabel'),
     torIp: document.getElementById('torIp'),
+
+    // RPC Status in settings
+    rpcStatusDot: document.getElementById('rpcStatusDot'),
+    rpcStatusText: document.getElementById('rpcStatusText'),
+    rpcEndpointDisplay: document.getElementById('rpcEndpointDisplay'),
 
     // Alerts
     alertCount: document.getElementById('alertCount'),
@@ -107,11 +125,8 @@ function initElements() {
     recentScans: document.getElementById('recentScans'),
 
     // Settings
-    rpcWarning: document.getElementById('rpcWarning'),
-    customRpc: document.getElementById('customRpc'),
     proxyHost: document.getElementById('proxyHost'),
     proxyPort: document.getElementById('proxyPort'),
-    saveRpc: document.getElementById('saveRpc'),
     debugLogs: document.getElementById('debugLogs'),
     clearLogs: document.getElementById('clearLogs'),
 
@@ -157,6 +172,23 @@ async function init() {
   updateZKStats();
   getInstalledExtensions();
   getBackgroundActivity();
+  // Fetch proxy config to get mode/endpoint from desktop app
+  fetchProxyConfig();
+}
+
+// Fetch proxy config from desktop app
+async function fetchProxyConfig() {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'GET_PROXY_CONFIG' });
+    if (result) {
+      config.proxyMode = result.mode || 'proxy_only';
+      config.rpcEndpoint = result.rpcEndpoint || null;
+      updateUI();
+      log(`Proxy mode: ${config.proxyMode}, endpoint: ${config.rpcEndpoint ? 'configured' : 'none'}`);
+    }
+  } catch (e) {
+    log('Failed to fetch proxy config: ' + e.message);
+  }
 }
 
 // Load notification settings from background
@@ -404,19 +436,33 @@ function setupEventListeners() {
     });
   }
 
-  // Tor toggle
-  if (elements.toggleTor) {
-    elements.toggleTor.addEventListener('change', async (e) => {
-      config.torEnabled = e.target.checked;
-      await saveConfig();
+  // Tor status is now read-only - controlled by desktop app
+  // No toggle event listener needed
 
-      if (config.torEnabled) {
-        startTorConnection();
+  // Auto-block toggle
+  const toggleAutoBlock = document.getElementById('toggleAutoBlock');
+  if (toggleAutoBlock) {
+    // Load saved state
+    chrome.storage.local.get(['autoBlockEnabled'], (result) => {
+      toggleAutoBlock.checked = result.autoBlockEnabled || false;
+      config.autoBlock = result.autoBlockEnabled || false;
+    });
+
+    toggleAutoBlock.addEventListener('change', async (e) => {
+      config.autoBlock = e.target.checked;
+      await chrome.storage.local.set({ autoBlockEnabled: config.autoBlock });
+
+      // Notify background script
+      chrome.runtime.sendMessage({
+        type: 'SET_AUTO_BLOCK',
+        enabled: config.autoBlock
+      });
+
+      if (config.autoBlock) {
+        addAlert('warning', 'Auto-Block Enabled', 'All transactions will be blocked automatically');
       } else {
-        stopTorConnection();
+        addAlert('info', 'Auto-Block Disabled', 'Transactions will prompt for approval');
       }
-
-      updateUI();
     });
   }
 
@@ -441,24 +487,8 @@ function setupEventListeners() {
     });
   }
 
-  // Settings
-  if (elements.saveRpc) {
-    elements.saveRpc.addEventListener('click', async () => {
-      config.customRpc = elements.customRpc.value.trim();
-      config.proxyHost = elements.proxyHost.value.trim() || '127.0.0.1';
-      config.proxyPort = parseInt(elements.proxyPort.value) || 8899;
-      await saveConfig();
-
-      updateUI();
-      addAlert('success', 'Settings Saved', 'RPC endpoint updated');
-
-      chrome.runtime.sendMessage({
-        type: 'SET_PROXY_ADDRESS',
-        host: config.proxyHost,
-        port: config.proxyPort
-      });
-    });
-  }
+  // Proxy settings are auto-saved when changed
+  // RPC endpoint is now configured in desktop app only
 
   // Clear buttons
   if (elements.clearActivity) {
@@ -650,19 +680,34 @@ function updateUI() {
   // Only show protected if proxy is actually running
   const isFullyProtected = proxyRunning && (hasPrivateRpc || torActive);
 
-  // Header status
-  if (!config.enabled) {
-    elements.headerDot.className = 'status-dot';
-    elements.headerStatus.textContent = 'Inactive';
-  } else if (!proxyRunning) {
-    elements.headerDot.className = 'status-dot danger';
-    elements.headerStatus.textContent = 'Proxy Offline';
-  } else if (isFullyProtected) {
-    elements.headerDot.className = 'status-dot active';
-    elements.headerStatus.textContent = torActive ? 'Tor Active' : 'Protected';
-  } else {
-    elements.headerDot.className = 'status-dot warning';
-    elements.headerStatus.textContent = 'Public RPC';
+  // Header status lights (3 separate indicators)
+  // Proxy light (cyan) - on when proxy is running
+  if (elements.proxyDot) {
+    if (proxyRunning && config.enabled) {
+      elements.proxyDot.className = 'status-dot active';
+    } else {
+      elements.proxyDot.className = 'status-dot';
+    }
+  }
+
+  // RPC light (purple) - on when private RPC is configured
+  if (elements.rpcDot) {
+    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      elements.rpcDot.className = 'status-dot active-purple';
+    } else {
+      elements.rpcDot.className = 'status-dot';
+    }
+  }
+
+  // Tor light (orange) - on when Tor is connected
+  if (elements.torHeaderDot) {
+    if (config.torConnected) {
+      elements.torHeaderDot.className = 'status-dot active-orange';
+    } else if (config.torEnabled) {
+      elements.torHeaderDot.className = 'status-dot warning'; // connecting
+    } else {
+      elements.torHeaderDot.className = 'status-dot';
+    }
   }
 
   // Status banner
@@ -703,33 +748,80 @@ function updateUI() {
 
   // Toggles
   elements.toggleProtection.checked = config.enabled;
-  elements.toggleTor.checked = config.torEnabled;
 
-  // Tor status
-  if (config.torEnabled) {
-    elements.torStatus.style.display = 'flex';
+  // Tor status (read-only, from desktop app)
+  if (elements.torDot && elements.torLabel) {
     if (config.torConnected) {
-      elements.torStatus.className = 'tor-status connected';
-      elements.torSpinner.style.display = 'none';
-      elements.torStatusText.textContent = 'Connected to Tor';
-      elements.torIp.textContent = config.torIp || '';
+      elements.torDot.className = 'status-dot active';
+      elements.torLabel.textContent = 'Connected';
+      elements.torLabel.style.color = '#5AF5F5';
+      if (elements.torStatus) {
+        elements.torStatus.style.display = 'flex';
+        if (elements.torIp) elements.torIp.textContent = config.torIp || '';
+      }
+    } else if (config.torEnabled) {
+      elements.torDot.className = 'status-dot warning';
+      elements.torLabel.textContent = 'Connecting...';
+      elements.torLabel.style.color = '#FFB800';
+      if (elements.torStatus) elements.torStatus.style.display = 'none';
     } else {
-      elements.torStatus.className = 'tor-status connecting';
-      elements.torSpinner.style.display = 'block';
-      elements.torStatusText.textContent = 'Connecting to Tor...';
-      elements.torIp.textContent = '';
+      elements.torDot.className = 'status-dot';
+      elements.torLabel.textContent = 'Off';
+      elements.torLabel.style.color = '#7D7D7D';
+      if (elements.torStatus) elements.torStatus.style.display = 'none';
     }
-  } else {
-    elements.torStatus.style.display = 'none';
   }
 
-  // Settings
-  elements.customRpc.value = config.customRpc || '';
-  elements.proxyHost.value = config.proxyHost || '127.0.0.1';
-  elements.proxyPort.value = config.proxyPort || 8899;
+  // Settings - Proxy host/port
+  if (elements.proxyHost) elements.proxyHost.value = config.proxyHost || '127.0.0.1';
+  if (elements.proxyPort) elements.proxyPort.value = config.proxyPort || 8899;
 
-  // RPC Warning
-  elements.rpcWarning.style.display = config.customRpc ? 'none' : 'flex';
+  // RPC Endpoint Status in Settings
+  if (elements.rpcStatusDot && elements.rpcStatusText) {
+    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      elements.rpcStatusDot.className = 'status-dot active';
+      elements.rpcStatusText.textContent = 'Private RPC Active';
+      elements.rpcStatusText.style.color = '#5AF5F5';
+      // Show masked endpoint
+      if (elements.rpcEndpointDisplay) {
+        const masked = maskApiKey(config.rpcEndpoint);
+        elements.rpcEndpointDisplay.textContent = masked;
+        elements.rpcEndpointDisplay.style.display = 'block';
+      }
+    } else if (proxyRunning) {
+      elements.rpcStatusDot.className = 'status-dot warning';
+      elements.rpcStatusText.textContent = 'Proxy Only (no private RPC)';
+      elements.rpcStatusText.style.color = '#FFB800';
+      if (elements.rpcEndpointDisplay) {
+        elements.rpcEndpointDisplay.textContent = 'Configure in desktop app';
+        elements.rpcEndpointDisplay.style.display = 'block';
+      }
+    } else {
+      elements.rpcStatusDot.className = 'status-dot';
+      elements.rpcStatusText.textContent = 'Desktop app not running';
+      elements.rpcStatusText.style.color = '#7D7D7D';
+      if (elements.rpcEndpointDisplay) {
+        elements.rpcEndpointDisplay.style.display = 'none';
+      }
+    }
+  }
+
+  // Mode badge - shows PROXY or PRIVATE RPC based on desktop app config
+  if (elements.modeBadge && elements.modeIndicator) {
+    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      elements.modeBadge.textContent = 'PRIVATE RPC';
+      elements.modeBadge.style.background = 'rgba(90, 245, 245, 0.2)';
+      elements.modeBadge.style.color = '#5AF5F5';
+      elements.modeIndicator.style.display = 'block';
+    } else if (proxyRunning) {
+      elements.modeBadge.textContent = 'PROXY MODE';
+      elements.modeBadge.style.background = 'rgba(255, 184, 0, 0.2)';
+      elements.modeBadge.style.color = '#FFB800';
+      elements.modeIndicator.style.display = 'block';
+    } else {
+      elements.modeIndicator.style.display = 'none';
+    }
+  }
 
   // Render lists
   renderAlertsList();
@@ -1818,6 +1910,93 @@ function formatTime(timestamp) {
   return `${Math.floor(diff / 86400000)}d`;
 }
 
+// Mask API key in endpoint URL for display
+function maskApiKey(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    // Mask api-key or similar params
+    const params = new URLSearchParams(parsed.search);
+    for (const [key, value] of params.entries()) {
+      if (key.toLowerCase().includes('key') || key.toLowerCase().includes('token')) {
+        if (value.length > 8) {
+          params.set(key, value.substring(0, 4) + '****' + value.substring(value.length - 4));
+        } else {
+          params.set(key, '****');
+        }
+      }
+    }
+    parsed.search = params.toString();
+    return parsed.toString();
+  } catch (e) {
+    // If URL parsing fails, just mask anything after api-key=
+    return url.replace(/(api[_-]?key=)([^&]+)/gi, '$1****');
+  }
+}
+
+// Check for suspicious activity patterns
+function checkSuspiciousActivity(rpcData) {
+  const now = Date.now();
+  const timeSincePageLoad = now - suspiciousActivityState.pageLoadTime;
+
+  // Track first RPC time
+  if (!suspiciousActivityState.firstRpcTime) {
+    suspiciousActivityState.firstRpcTime = now;
+  }
+
+  const method = rpcData.method || '';
+  const warnings = [];
+
+  // Check for immediate balance checks (within 2 seconds of page load)
+  if (timeSincePageLoad < 2000) {
+    if (method.includes('getBalance') || method.includes('getTokenAccountsByOwner') ||
+        method.includes('getAccountInfo') || method.includes('getTokenAccountBalance')) {
+      suspiciousActivityState.balanceCheckCount++;
+      if (suspiciousActivityState.balanceCheckCount === 1) {
+        warnings.push({
+          type: 'warning',
+          title: 'Immediate Wallet Check',
+          message: `Site checked wallet balance within ${Math.round(timeSincePageLoad)}ms of loading`
+        });
+      }
+    }
+  }
+
+  // Check for transfer attempts
+  if (method.includes('sendTransaction') || method.includes('signTransaction') ||
+      method.includes('signAndSendTransaction') || method.includes('simulateTransaction')) {
+    suspiciousActivityState.transferAttempts++;
+    if (suspiciousActivityState.transferAttempts === 1 && timeSincePageLoad < 5000) {
+      warnings.push({
+        type: 'danger',
+        title: 'Quick Transfer Attempt',
+        message: 'Site attempting transaction shortly after loading - verify before approving!'
+      });
+    }
+  }
+
+  // Multiple rapid balance checks
+  if (suspiciousActivityState.balanceCheckCount > 5 && timeSincePageLoad < 10000) {
+    warnings.push({
+      type: 'warning',
+      title: 'Multiple Wallet Probes',
+      message: `${suspiciousActivityState.balanceCheckCount} wallet checks in ${Math.round(timeSincePageLoad/1000)}s`
+    });
+  }
+
+  return warnings;
+}
+
+// Reset suspicious activity state (call on tab change)
+function resetSuspiciousActivityState() {
+  suspiciousActivityState = {
+    firstRpcTime: null,
+    pageLoadTime: Date.now(),
+    balanceCheckCount: 0,
+    transferAttempts: 0
+  };
+}
+
 // Track current tab RPC count locally
 let currentTabRpcCount = 0;
 let currentTabId = null;
@@ -1847,6 +2026,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           detailData.currentSite.rpcCalls = currentTabRpcCount;
           detailData.currentSite.lastEndpoint = message.data.url;
         }
+
+        // Check for suspicious activity patterns
+        const warnings = checkSuspiciousActivity(message.data);
+        warnings.forEach(w => addAlert(w.type, w.title, w.message));
       }
 
       // Update ZK stats if it's a ZK call
@@ -1865,6 +2048,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       currentTabId = message.data.tabId;
       currentTabRpcCount = message.data.rpcCalls || 0;
       updateSiteDisplay(message.data);
+      // Reset suspicious activity tracking for new tab
+      resetSuspiciousActivityState();
       // Refresh activity page if it's currently visible
       const activityPage = document.getElementById('page-activity');
       if (activityPage && activityPage.classList.contains('active')) {
@@ -1881,6 +2066,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       config.torIp = message.ip;
       saveConfig();
       updateUI();
+      break;
+
+    case 'CONFIG_UPDATED':
+      // Desktop app config changed (mode/endpoint)
+      if (message.data) {
+        config.proxyMode = message.data.mode || 'proxy_only';
+        config.rpcEndpoint = message.data.rpcEndpoint || null;
+        updateUI();
+        log(`Config updated: mode=${config.proxyMode}`);
+      }
       break;
   }
 });

@@ -1,3 +1,4 @@
+use crate::transaction_decoder;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::net::SocketAddr;
@@ -6,12 +7,26 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
+
 // Proxy server state
 static SHUTDOWN_TX: Lazy<Mutex<Option<oneshot::Sender<()>>>> = Lazy::new(|| Mutex::new(None));
 
 // Shared stats counters
 pub static REQUESTS_PROXIED: AtomicU64 = AtomicU64::new(0);
 pub static BYTES_TRANSFERRED: AtomicU64 = AtomicU64::new(0);
+
+// Global RPC endpoint config
+static RPC_ENDPOINT: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+/// Set the RPC endpoint (called from main.rs)
+pub fn set_rpc_endpoint(endpoint: Option<String>) {
+    *RPC_ENDPOINT.lock() = endpoint;
+}
+
+/// Get the current RPC endpoint
+pub fn get_rpc_endpoint() -> Option<String> {
+    RPC_ENDPOINT.lock().clone()
+}
 
 pub async fn start_proxy_server(port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -114,8 +129,69 @@ async fn handle_connection(
         return Ok(());
     }
 
+    if request_line.starts_with("GET /config") {
+        let endpoint = get_rpc_endpoint();
+        let mode = if endpoint.is_some() { "private_rpc" } else { "proxy_only" };
+        let config_json = serde_json::json!({
+            "mode": mode,
+            "rpcEndpoint": endpoint,
+            "torEnabled": false
+        });
+        let body = serde_json::to_string(&config_json).unwrap_or_default();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        writer.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
     if request_line.starts_with("OPTIONS") {
         let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Target-URL\r\nAccess-Control-Max-Age: 86400\r\nContent-Length: 0\r\n\r\n";
+        writer.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
+    // Handle transaction decode endpoint
+    if request_line.starts_with("POST /decode") {
+        // Read body
+        let mut body = vec![0u8; content_length];
+        if content_length > 0 {
+            buf_reader.read_exact(&mut body).await?;
+        }
+
+        let result = if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body) {
+            if let Some(tx) = json.get("transaction").and_then(|v| v.as_str()) {
+                match transaction_decoder::decode_transaction(tx) {
+                    Ok(decoded) => serde_json::json!({
+                        "success": true,
+                        "decoded": decoded
+                    }),
+                    Err(e) => serde_json::json!({
+                        "success": false,
+                        "error": e
+                    }),
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "error": "Missing 'transaction' field"
+                })
+            }
+        } else {
+            serde_json::json!({
+                "success": false,
+                "error": "Invalid JSON"
+            })
+        };
+
+        let body = serde_json::to_string(&result).unwrap_or_default();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
         writer.write_all(response.as_bytes()).await?;
         return Ok(());
     }
@@ -126,10 +202,31 @@ async fn handle_connection(
         buf_reader.read_exact(&mut body).await?;
     }
 
+    // Check if this is a transaction-related RPC call and decode it
+    let decoded_tx_info = decode_rpc_transaction(&body);
+    if let Some(ref info) = decoded_tx_info {
+        log::info!("Decoded transaction: {}", info.summary);
+        if !info.warnings.is_empty() {
+            for warning in &info.warnings {
+                log::warn!("TX Warning: {} - {}", warning.title, warning.message);
+            }
+        }
+    }
+
+    // Check if user has configured a private RPC endpoint - if so, route there
+    let final_target = if let Some(private_endpoint) = get_rpc_endpoint() {
+        // User has a private RPC configured - route all Solana RPC traffic there
+        log::info!("Routing RPC request to private endpoint: {}", private_endpoint);
+        private_endpoint
+    } else {
+        // No private endpoint - use original target (default or from header)
+        target_url
+    };
+
     // Forward to target RPC
     let client = reqwest::Client::new();
     let response = client
-        .post(&target_url)
+        .post(&final_target)
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -138,20 +235,37 @@ async fn handle_connection(
     match response {
         Ok(resp) => {
             let status = resp.status();
-            let body = resp.bytes().await.unwrap_or_default();
+            let response_body = resp.bytes().await.unwrap_or_default();
 
             // Update stats
             REQUESTS_PROXIED.fetch_add(1, Ordering::Relaxed);
-            BYTES_TRANSFERRED.fetch_add(body.len() as u64, Ordering::Relaxed);
+            BYTES_TRANSFERRED.fetch_add(response_body.len() as u64, Ordering::Relaxed);
+
+            // If we decoded a transaction, enrich the response with the decoded info
+            let final_body = if let Some(ref decoded) = decoded_tx_info {
+                // Parse the original response and add decoded info
+                if let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&response_body) {
+                    // Add decoded transaction info to the response
+                    json["_privacyrpc"] = serde_json::json!({
+                        "decoded": decoded,
+                        "intercepted": true
+                    });
+                    serde_json::to_vec(&json).unwrap_or_else(|_| response_body.to_vec())
+                } else {
+                    response_body.to_vec()
+                }
+            } else {
+                response_body.to_vec()
+            };
 
             let http_response = format!(
                 "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Target-URL\r\nContent-Length: {}\r\n\r\n",
                 status.as_u16(),
-                body.len()
+                final_body.len()
             );
 
             writer.write_all(http_response.as_bytes()).await?;
-            writer.write_all(&body).await?;
+            writer.write_all(&final_body).await?;
         }
         Err(e) => {
             let error_body = format!(r#"{{"error":"Proxy error: {}"}}"#, e);
@@ -165,6 +279,42 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+/// Decode transaction from RPC request body if it's a transaction-related method
+fn decode_rpc_transaction(body: &[u8]) -> Option<transaction_decoder::DecodedTransaction> {
+    let json: serde_json::Value = serde_json::from_slice(body).ok()?;
+
+    let method = json.get("method")?.as_str()?;
+
+    // Methods that contain transactions we can decode
+    match method {
+        "signTransaction" | "signAllTransactions" | "sendTransaction" | "simulateTransaction" => {
+            // Try to extract transaction(s) from params
+            let params = json.get("params")?;
+
+            // signTransaction: params is typically [transaction_base64] or {transaction: base64}
+            // sendTransaction: params is typically [transaction_base64, options?]
+            let tx_encoded = if let Some(arr) = params.as_array() {
+                // First param is usually the transaction
+                arr.first()?.as_str()
+            } else if let Some(obj) = params.as_object() {
+                // Could be {transaction: "..."} format
+                obj.get("transaction")?.as_str()
+            } else {
+                params.as_str()
+            }?;
+
+            match transaction_decoder::decode_transaction(tx_encoded) {
+                Ok(decoded) => Some(decoded),
+                Err(e) => {
+                    log::debug!("Failed to decode transaction: {}", e);
+                    None
+                }
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Handle CONNECT requests for HTTPS tunneling

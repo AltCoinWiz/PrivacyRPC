@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Jupiter Swap - Solana DEX</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #00d4aa; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    h2 { margin-bottom: 20px; }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #00d4aa 0%, #00a080 100%);
+      border: none;
+      border-radius: 12px;
+      color: #000;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(255,0,0,0.1);
+      border: 1px solid #ff4757;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Jupiter</div>
+
+    <div class="test-info">
+      <h4>TEST: Rapid Asset Enumeration</h4>
+      <p>This page fires 10+ RPC calls (getBalance, getTokenAccountsByOwner, getAccountInfo) within 2 seconds to simulate drainer behavior scanning all user assets before constructing a drain TX.</p>
+    </div>
+
+    <div class="card">
+      <h2>Connect Wallet to Swap</h2>
+      <p style="color: #888; margin-bottom: 20px;">Connect your wallet to access the best rates on Solana</p>
+      <button class="btn" onclick="connectAndEnumerate()">Connect Wallet</button>
+    </div>
+
+    <div class="status" id="status" style="display: none;"></div>
+  </div>
+
+  <script>
+    const RPC_URL = 'http://localhost:3333/mock-rpc';
+    const TEST_WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+
+    async function rpcCall(method, params = []) {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params
+        })
+      });
+      return res.json();
+    }
+
+    function log(msg) {
+      const status = document.getElementById('status');
+      status.style.display = 'block';
+      status.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+      status.scrollTop = status.scrollHeight;
+    }
+
+    async function connectAndEnumerate() {
+      log('Wallet connected: ' + TEST_WALLET);
+      log('Starting asset enumeration (DRAINER PATTERN)...');
+
+      // DRAINER PATTERN: Rapid enumeration of all assets
+      // This is what drainers do to find everything to steal
+
+      // 1. Get SOL balance
+      log('-> getBalance');
+      await rpcCall('getBalance', [TEST_WALLET]);
+
+      // 2. Get all token accounts (SPL tokens)
+      log('-> getTokenAccountsByOwner (SPL tokens)');
+      await rpcCall('getTokenAccountsByOwner', [TEST_WALLET, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }]);
+
+      // 3. Get all token-2022 accounts
+      log('-> getTokenAccountsByOwner (Token-2022)');
+      await rpcCall('getTokenAccountsByOwner', [TEST_WALLET, { programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' }]);
+
+      // 4-8. Multiple getAccountInfo calls (checking specific high-value tokens)
+      const tokenMints = [
+        'So11111111111111111111111111111111111111112', // wSOL
+        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+        'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', // BONK
+        'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN'   // JUP
+      ];
+
+      for (const mint of tokenMints) {
+        log(`-> getAccountInfo (${mint.substring(0, 8)}...)`);
+        await rpcCall('getAccountInfo', [mint]);
+      }
+
+      // 9. Get recent blockhash (preparing transaction)
+      log('-> getLatestBlockhash');
+      await rpcCall('getLatestBlockhash');
+
+      // 10-12. More account checks
+      log('-> getAccountInfo (user account)');
+      await rpcCall('getAccountInfo', [TEST_WALLET]);
+      log('-> getBalance (recheck)');
+      await rpcCall('getBalance', [TEST_WALLET]);
+
+      log('');
+      log('=== ENUMERATION COMPLETE ===');
+      log('Total calls: 12 in ~2 seconds');
+      log('Pattern matches: DRAINER ASSET SCAN');
+      log('');
+      log('PrivacyRPC should have detected:');
+      log('- Rapid enumeration pattern');
+      log('- Multiple getTokenAccountsByOwner');
+      log('- Sequential getAccountInfo calls');
+    }
+  </script>
+</body>
+</html>

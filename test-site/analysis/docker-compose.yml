@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  malware-analysis:
+    build: .
+    # CRITICAL: No network access - completely isolated
+    network_mode: none
+    # Read-only root filesystem
+    read_only: true
+    # Drop all capabilities
+    cap_drop:
+      - ALL
+    # Temp directory for unzipping
+    tmpfs:
+      - /tmp:size=100M
+    # Mount the malware file READ-ONLY
+    volumes:
+      - /Users/victorcastles/Downloads/Telegram Desktop/Drag me to Start.zip:/analysis/malware.zip:ro
+    # Keep container running
+    stdin_open: true
+    tty: true

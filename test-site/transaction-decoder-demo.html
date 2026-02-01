@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Transaction Decoder Demo - PrivacyRPC</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 32px; margin-bottom: 8px; }
+    .subtitle { color: #7D7D7D; margin-bottom: 40px; }
+    .demo-section {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #1E2328;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .demo-section h2 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: #5AF5F5;
+    }
+    .demo-section p {
+      color: #9D9D9D;
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+    .btn {
+      display: inline-block;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      margin-right: 12px;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #5AF5F5;
+      color: #0a0a0a;
+    }
+    .btn-primary:hover {
+      background: #7FF7F7;
+      box-shadow: 0 0 24px rgba(90, 245, 245, 0.4);
+    }
+    .btn-warning {
+      background: #FFB800;
+      color: #0a0a0a;
+    }
+    .btn-warning:hover {
+      background: #FFCC33;
+      box-shadow: 0 0 24px rgba(255, 184, 0, 0.4);
+    }
+    .btn-danger {
+      background: #FF4757;
+      color: #fff;
+    }
+    .btn-danger:hover {
+      background: #FF5A68;
+      box-shadow: 0 0 24px rgba(255, 71, 87, 0.4);
+    }
+    .btn-secondary {
+      background: #1E2328;
+      color: #9D9D9D;
+    }
+    .btn-secondary:hover {
+      background: #2A3038;
+      color: #fff;
+    }
+    .result {
+      margin-top: 16px;
+      padding: 16px;
+      background: #0a0a0a;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+    .result.show { display: block; }
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .status-active { background: rgba(90, 245, 245, 0.2); color: #5AF5F5; }
+    .status-inactive { background: rgba(255, 71, 87, 0.2); color: #FF4757; }
+    .info-box {
+      background: rgba(90, 245, 245, 0.1);
+      border: 1px solid rgba(90, 245, 245, 0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .info-box h4 { color: #5AF5F5; margin-bottom: 8px; }
+    .info-box ul { margin-left: 20px; color: #9D9D9D; }
+    .info-box li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Transaction Decoder Demo</h1>
+    <p class="subtitle">Test PrivacyRPC's transaction decoding capabilities</p>
+
+    <div class="demo-section">
+      <h2>Proxy Status</h2>
+      <span id="proxyStatus" class="status status-inactive">Checking...</span>
+      <p>The PrivacyRPC desktop app must be running for transaction decoding to work.</p>
+      <button class="btn btn-secondary" onclick="checkProxy()">Refresh Status</button>
+    </div>
+
+    <div class="info-box">
+      <h4>How Transaction Decoding Works</h4>
+      <ul>
+        <li>Transactions are intercepted at the proxy level</li>
+        <li>Base64/Base58 encoded transactions are parsed</li>
+        <li>Instructions are decoded to human-readable format</li>
+        <li>Risk analysis identifies potential threats</li>
+        <li>Overlay shows you what you're signing before approval</li>
+      </ul>
+    </div>
+
+    <div class="demo-section">
+      <h2>Demo: SOL Transfer (Low Risk)</h2>
+      <p>This simulates a simple SOL transfer transaction. The decoder will show the amount and destination.</p>
+      <button class="btn btn-primary" onclick="demoSolTransfer()">Decode SOL Transfer</button>
+      <div id="result1" class="result"></div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Demo: Token Approval (Medium Risk)</h2>
+      <p>This simulates a token approval transaction. Token approvals allow third parties to spend your tokens.</p>
+      <button class="btn btn-warning" onclick="demoTokenApproval()">Decode Token Approval</button>
+      <div id="result2" class="result"></div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Demo: Unlimited Approval (High Risk)</h2>
+      <p>This simulates an UNLIMITED token approval - a common drainer tactic. The decoder will flag this as dangerous.</p>
+      <button class="btn btn-danger" onclick="demoUnlimitedApproval()">Decode Unlimited Approval</button>
+      <div id="result3" class="result"></div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Demo: Show Overlay</h2>
+      <p>This triggers the full transaction review overlay that users see before signing.</p>
+      <button class="btn btn-primary" onclick="showOverlay()">Show Transaction Overlay</button>
+    </div>
+
+    <div class="demo-section">
+      <h2>Custom Transaction</h2>
+      <p>Paste a base64-encoded Solana transaction to decode it:</p>
+      <textarea id="customTx" style="width: 100%; height: 100px; background: #1E2328; border: 1px solid #2A3038; border-radius: 8px; color: #fff; padding: 12px; font-family: monospace; resize: vertical; margin-bottom: 12px;" placeholder="Paste base64-encoded transaction here..."></textarea>
+      <button class="btn btn-primary" onclick="decodeCustom()">Decode Transaction</button>
+      <div id="result4" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    const PROXY_URL = 'http://127.0.0.1:8899';
+
+    // Check proxy status
+    async function checkProxy() {
+      const statusEl = document.getElementById('proxyStatus');
+      try {
+        const resp = await fetch(`${PROXY_URL}/health`);
+        if (resp.ok) {
+          const data = await resp.json();
+          statusEl.textContent = 'Proxy Active';
+          statusEl.className = 'status status-active';
+        } else {
+          throw new Error('Not OK');
+        }
+      } catch (e) {
+        statusEl.textContent = 'Proxy Offline';
+        statusEl.className = 'status status-inactive';
+      }
+    }
+
+    // Decode transaction via proxy
+    async function decodeTransaction(encodedTx) {
+      try {
+        const resp = await fetch(`${PROXY_URL}/decode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction: encodedTx })
+        });
+        return await resp.json();
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+
+    // Show result
+    function showResult(elementId, data) {
+      const el = document.getElementById(elementId);
+      el.textContent = JSON.stringify(data, null, 2);
+      el.classList.add('show');
+    }
+
+    // Sample SOL transfer transaction (simplified - for demo purposes)
+    // This is a mock base64 transaction that the decoder can parse
+    const SAMPLE_SOL_TRANSFER = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACAyZJSMbBpFRJGvbU3zwQ7hf8S8t8kGqTZ1uMq/q+HK0bBpuIV/6rgYT3aH3OXz6tqzDgBn2N7AYj8M2+qMm4uAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/xLf+SLnhwVZKtvAywAAAAAAAAAAAAAAAAAAAAAAAQICAAEMAgAAAACUNXcAAAAA';
+
+    // Demo: SOL Transfer
+    async function demoSolTransfer() {
+      const result = await decodeTransaction(SAMPLE_SOL_TRANSFER);
+      showResult('result1', result);
+
+      // Also try to show overlay via extension
+      if (result.success && result.decoded) {
+        try {
+          await chrome.runtime.sendMessage({
+            type: 'SHOW_DECODED_TX',
+            decoded: result.decoded
+          });
+        } catch (e) {
+          console.log('Extension not available for overlay');
+        }
+      }
+    }
+
+    // Sample Token Approval (mock)
+    const SAMPLE_TOKEN_APPROVAL = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADAyZJSMbBpFRJGvbU3zwQ7hf8S8t8kGqTZ1uMq/q+HK0bBpuIV/6rgYT3aH3OXz6tqzDgBn2N7AYj8M2+qMm4uOaVjMqKcvl6rgqKPdJR7hL8V6Z8K7l5P8vn8DdFFZsGBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEDAgABBAQAAABkAAAAAAAAAAA=';
+
+    // Demo: Token Approval
+    async function demoTokenApproval() {
+      const result = await decodeTransaction(SAMPLE_TOKEN_APPROVAL);
+      showResult('result2', result);
+    }
+
+    // Sample Unlimited Approval (mock - uses max u64 amount)
+    const SAMPLE_UNLIMITED_APPROVAL = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADAyZJSMbBpFRJGvbU3zwQ7hf8S8t8kGqTZ1uMq/q+HK0bBpuIV/6rgYT3aH3OXz6tqzDgBn2N7AYj8M2+qMm4uOaVjMqKcvl6rgqKPdJR7hL8V6Z8K7l5P8vn8DdFFZsGBt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEDAgABBAQAAAD//////////w==';
+
+    // Demo: Unlimited Approval
+    async function demoUnlimitedApproval() {
+      const result = await decodeTransaction(SAMPLE_UNLIMITED_APPROVAL);
+      showResult('result3', result);
+    }
+
+    // Show overlay
+    async function showOverlay() {
+      // First decode a sample transaction
+      const result = await decodeTransaction(SAMPLE_SOL_TRANSFER);
+
+      if (result.success && result.decoded) {
+        // Try to show overlay via extension content script
+        try {
+          // Send message to extension background to show overlay
+          const response = await new Promise((resolve, reject) => {
+            // Create custom event to communicate with content script
+            const event = new CustomEvent('privacyrpc-show-tx-overlay', {
+              detail: { decoded: result.decoded }
+            });
+            window.dispatchEvent(event);
+
+            // Also try direct message if extension context available
+            if (typeof chrome !== 'undefined' && chrome.runtime) {
+              chrome.runtime.sendMessage({
+                type: 'SHOW_TX_OVERLAY_REQUEST',
+                decoded: result.decoded
+              }).then(resolve).catch(reject);
+            } else {
+              resolve({ info: 'Extension communication attempted via event' });
+            }
+          });
+          console.log('Overlay response:', response);
+        } catch (e) {
+          console.log('Note: Overlay requires PrivacyRPC extension to be installed');
+          alert('Transaction decoded successfully!\n\n' +
+                'Summary: ' + result.decoded.summary + '\n' +
+                'Risk Level: ' + result.decoded.risk_level + '\n\n' +
+                'Install the PrivacyRPC extension to see the full overlay.');
+        }
+      } else {
+        alert('Failed to decode transaction: ' + (result.error || 'Unknown error'));
+      }
+    }
+
+    // Decode custom transaction
+    async function decodeCustom() {
+      const tx = document.getElementById('customTx').value.trim();
+      if (!tx) {
+        alert('Please paste a transaction to decode');
+        return;
+      }
+      const result = await decodeTransaction(tx);
+      showResult('result4', result);
+    }
+
+    // Init
+    checkProxy();
+  </script>
+</body>
+</html>

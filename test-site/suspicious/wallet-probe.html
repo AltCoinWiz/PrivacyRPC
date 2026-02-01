@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>NFT Gallery</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .test-info {
+      background: rgba(255,184,0,0.1);
+      border: 1px solid #FFB800;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .status {
+      padding: 16px;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 style="margin-bottom: 20px;">NFT Gallery</h1>
+
+    <div class="test-info">
+      <h4>TEST: Multiple Wallet Probes</h4>
+      <p>This page makes repeated balance checks (5+ in 10 seconds) - a pattern used to probe wallet contents before deciding whether to attack high-value targets.</p>
+    </div>
+
+    <div class="status" id="status">Starting wallet probe pattern...</div>
+  </div>
+
+  <script>
+    const RPC_URL = 'http://localhost:3333/mock-rpc';
+    const TEST_WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+    const pageLoadTime = Date.now();
+
+    async function rpcCall(method, params = []) {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
+      });
+      return res.json();
+    }
+
+    function log(msg) {
+      document.getElementById('status').innerHTML += '<br>' + msg;
+    }
+
+    // Multiple rapid balance checks (probing pattern)
+    (async function probeWallet() {
+      for (let i = 1; i <= 8; i++) {
+        log(`[Probe ${i}] getBalance @ +${Date.now() - pageLoadTime}ms`);
+        await rpcCall('getBalance', [TEST_WALLET]);
+        await new Promise(r => setTimeout(r, 800)); // 800ms between checks
+      }
+      log('');
+      log('=== 8 balance checks in ~6 seconds ===');
+      log('PrivacyRPC should detect: "Multiple Wallet Probes"');
+    })();
+  </script>
+</body>
+</html>

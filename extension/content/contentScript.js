@@ -10,6 +10,24 @@
   if (window.__privacyRpcContentScriptLoaded) return;
   window.__privacyRpcContentScriptLoaded = true;
 
+  // Inject the page-context script for wallet interception
+  function injectScript() {
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('content/injected.js');
+      script.onload = function() {
+        this.remove();
+      };
+      (document.head || document.documentElement).appendChild(script);
+      console.log('[PrivacyRPC] Injected wallet interceptor');
+    } catch (e) {
+      console.error('[PrivacyRPC] Failed to inject script:', e);
+    }
+  }
+
+  // Inject early
+  injectScript();
+
   // Notification container
   let container = null;
   const notifications = new Map();
@@ -206,6 +224,425 @@
     return true;
   });
 
+  // ============================================================================
+  // TRANSACTION DECODER OVERLAY
+  // Shows decoded transaction info before signing
+  // ============================================================================
+
+  let txOverlay = null;
+  let pendingTxResolve = null;
+
+  // Risk level colors
+  const riskColors = {
+    'Low': '#5AF5F5',
+    'Medium': '#FFB800',
+    'High': '#FF6B00',
+    'Critical': '#FF4757'
+  };
+
+  // Create transaction overlay
+  function createTxOverlay() {
+    if (txOverlay && document.body.contains(txOverlay)) return txOverlay;
+
+    txOverlay = document.createElement('div');
+    txOverlay.className = 'privacyrpc-tx-overlay';
+    txOverlay.id = 'privacyrpc-tx-overlay';
+    txOverlay.innerHTML = `
+      <div class="privacyrpc-tx-backdrop"></div>
+      <div class="privacyrpc-tx-modal">
+        <div class="privacyrpc-tx-header">
+          <div class="privacyrpc-tx-header-icon">${icons.shield}</div>
+          <div class="privacyrpc-tx-header-text">
+            <h2>Transaction Review</h2>
+            <p>PrivacyRPC has decoded this transaction</p>
+          </div>
+          <button class="privacyrpc-tx-close">${icons.close}</button>
+        </div>
+        <div class="privacyrpc-tx-body">
+          <div class="privacyrpc-tx-loading">
+            <div class="privacyrpc-tx-spinner"></div>
+            <p>Decoding transaction...</p>
+          </div>
+          <div class="privacyrpc-tx-content" style="display: none;"></div>
+        </div>
+        <div class="privacyrpc-tx-footer">
+          <button class="privacyrpc-tx-btn privacyrpc-tx-btn-reject">Reject</button>
+          <button class="privacyrpc-tx-btn privacyrpc-tx-btn-approve">Approve</button>
+        </div>
+      </div>
+    `;
+
+    // Event listeners
+    txOverlay.querySelector('.privacyrpc-tx-backdrop').addEventListener('click', () => rejectTx());
+    txOverlay.querySelector('.privacyrpc-tx-close').addEventListener('click', () => rejectTx());
+    txOverlay.querySelector('.privacyrpc-tx-btn-reject').addEventListener('click', () => rejectTx());
+    txOverlay.querySelector('.privacyrpc-tx-btn-approve').addEventListener('click', () => approveTx());
+
+    document.body.appendChild(txOverlay);
+    return txOverlay;
+  }
+
+  // Show transaction overlay with decoded info
+  function showTxOverlay(decoded) {
+    createTxOverlay();
+
+    const loadingEl = txOverlay.querySelector('.privacyrpc-tx-loading');
+    const contentEl = txOverlay.querySelector('.privacyrpc-tx-content');
+    const riskColor = riskColors[decoded.risk_level] || '#7D7D7D';
+
+    // Build warnings HTML
+    let warningsHtml = '';
+    if (decoded.warnings && decoded.warnings.length > 0) {
+      warningsHtml = `
+        <div class="privacyrpc-tx-warnings">
+          <h4>Warnings</h4>
+          ${decoded.warnings.map(w => `
+            <div class="privacyrpc-tx-warning privacyrpc-tx-warning-${w.level.toLowerCase()}">
+              <span class="privacyrpc-tx-warning-icon">${icons.warning}</span>
+              <div>
+                <strong>${escapeHtml(w.title)}</strong>
+                <p>${escapeHtml(w.message)}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Build instructions HTML
+    let instructionsHtml = '';
+    if (decoded.instructions && decoded.instructions.length > 0) {
+      instructionsHtml = `
+        <div class="privacyrpc-tx-instructions">
+          <h4>Instructions (${decoded.instructions.length})</h4>
+          ${decoded.instructions.map(inst => `
+            <div class="privacyrpc-tx-instruction">
+              <div class="privacyrpc-tx-instruction-header">
+                <span class="privacyrpc-tx-instruction-program">${escapeHtml(inst.program)}</span>
+                <span class="privacyrpc-tx-instruction-action">${escapeHtml(inst.action)}</span>
+              </div>
+              ${renderInstructionDetails(inst.details)}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Origin info if available
+    const originHtml = decoded.origin ? `
+      <div class="privacyrpc-tx-origin">
+        <span>Requesting site:</span>
+        <strong>${escapeHtml(decoded.origin)}</strong>
+      </div>
+    ` : '';
+
+    contentEl.innerHTML = `
+      ${originHtml}
+      <div class="privacyrpc-tx-summary">
+        <div class="privacyrpc-tx-summary-icon" style="color: ${riskColor};">${icons.shield}</div>
+        <div class="privacyrpc-tx-summary-text">
+          <h3>${escapeHtml(decoded.summary)}</h3>
+          <span class="privacyrpc-tx-risk" style="background: ${riskColor}20; color: ${riskColor}; border: 1px solid ${riskColor}40;">
+            ${decoded.risk_level} Risk
+          </span>
+        </div>
+      </div>
+      ${warningsHtml}
+      ${instructionsHtml}
+      ${decoded.estimated_cost ? `
+        <div class="privacyrpc-tx-cost">
+          <span>Estimated Cost:</span>
+          <strong>${decoded.estimated_cost.toFixed(6)} SOL</strong>
+        </div>
+      ` : ''}
+    `;
+
+    loadingEl.style.display = 'none';
+    contentEl.style.display = 'block';
+    txOverlay.classList.add('privacyrpc-tx-visible');
+
+    // If critical risk, highlight approve button as dangerous
+    if (decoded.risk_level === 'Critical' || decoded.risk_level === 'High') {
+      const approveBtn = txOverlay.querySelector('.privacyrpc-tx-btn-approve');
+      approveBtn.classList.add('privacyrpc-tx-btn-danger');
+      approveBtn.textContent = 'Approve Anyway';
+    }
+  }
+
+  // Render instruction details
+  function renderInstructionDetails(details) {
+    if (!details || details.type === 'Unknown') {
+      return details.data_preview ? `<code class="privacyrpc-tx-code">${escapeHtml(details.data_preview)}</code>` : '';
+    }
+
+    switch (details.type) {
+      case 'SolTransfer':
+        return `
+          <div class="privacyrpc-tx-detail">
+            <div class="privacyrpc-tx-detail-row">
+              <span>From:</span>
+              <code>${shortenAddress(details.from)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row">
+              <span>To:</span>
+              <code>${shortenAddress(details.to)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row privacyrpc-tx-amount">
+              <span>Amount:</span>
+              <strong>${details.amount_sol.toFixed(6)} SOL</strong>
+            </div>
+          </div>
+        `;
+      case 'TokenTransfer':
+        return `
+          <div class="privacyrpc-tx-detail">
+            <div class="privacyrpc-tx-detail-row">
+              <span>From:</span>
+              <code>${shortenAddress(details.from)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row">
+              <span>To:</span>
+              <code>${shortenAddress(details.to)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row privacyrpc-tx-amount">
+              <span>Amount:</span>
+              <strong>${details.amount} tokens</strong>
+            </div>
+          </div>
+        `;
+      case 'TokenApprove':
+        return `
+          <div class="privacyrpc-tx-detail privacyrpc-tx-detail-warning">
+            <div class="privacyrpc-tx-detail-row">
+              <span>Source:</span>
+              <code>${shortenAddress(details.source)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row">
+              <span>Delegate:</span>
+              <code>${shortenAddress(details.delegate)}</code>
+            </div>
+            <div class="privacyrpc-tx-detail-row privacyrpc-tx-amount">
+              <span>Amount:</span>
+              <strong style="color: #FFB800;">${details.amount === 18446744073709551615 ? 'UNLIMITED' : details.amount} tokens</strong>
+            </div>
+          </div>
+        `;
+      default:
+        return '';
+    }
+  }
+
+  // Shorten address for display
+  function shortenAddress(addr) {
+    if (!addr || addr.length < 12) return addr || 'Unknown';
+    return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+  }
+
+  // Hide transaction overlay
+  function hideTxOverlay() {
+    if (txOverlay) {
+      txOverlay.classList.remove('privacyrpc-tx-visible');
+      const contentEl = txOverlay.querySelector('.privacyrpc-tx-content');
+      const loadingEl = txOverlay.querySelector('.privacyrpc-tx-loading');
+      if (contentEl) contentEl.style.display = 'none';
+      if (loadingEl) loadingEl.style.display = 'block';
+    }
+  }
+
+  // Approve transaction
+  function approveTx() {
+    console.log('[PrivacyRPC] Approve clicked, pendingTxResolve:', !!pendingTxResolve);
+    hideTxOverlay();
+    if (pendingTxResolve) {
+      console.log('[PrivacyRPC] Resolving with approved: true');
+      pendingTxResolve({ approved: true });
+      pendingTxResolve = null;
+    } else {
+      console.warn('[PrivacyRPC] No pending resolve function!');
+    }
+  }
+
+  // Reject transaction
+  function rejectTx() {
+    hideTxOverlay();
+    if (pendingTxResolve) {
+      pendingTxResolve({ approved: false });
+      pendingTxResolve = null;
+    }
+  }
+
+  // Decode transaction via proxy
+  async function decodeTransaction(encodedTx) {
+    try {
+      const response = await fetch('http://127.0.0.1:8899/decode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction: encodedTx })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.decoded) {
+          return data.decoded;
+        }
+      }
+    } catch (e) {
+      console.log('[PrivacyRPC] Failed to decode transaction:', e);
+    }
+    return null;
+  }
+
+  // Request transaction approval - shows overlay and waits for user decision
+  async function requestTxApproval(encodedTx) {
+    createTxOverlay();
+    txOverlay.classList.add('privacyrpc-tx-visible');
+
+    // Decode the transaction
+    const decoded = await decodeTransaction(encodedTx);
+
+    if (decoded) {
+      showTxOverlay(decoded);
+    } else {
+      // Show error state
+      const loadingEl = txOverlay.querySelector('.privacyrpc-tx-loading');
+      loadingEl.innerHTML = `
+        <div class="privacyrpc-tx-error">
+          <span>${icons.warning}</span>
+          <p>Could not decode transaction</p>
+          <small>Approve with caution</small>
+        </div>
+      `;
+    }
+
+    // Wait for user decision
+    return new Promise(resolve => {
+      pendingTxResolve = resolve;
+    });
+  }
+
+  // Listen for transaction decode requests from background
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'SHOW_OVERLAY_NOTIFICATION') {
+      const id = showNotification(message.notification);
+      sendResponse({ success: true, id });
+    } else if (message.type === 'CLOSE_OVERLAY_NOTIFICATION') {
+      closeNotification(message.id);
+      sendResponse({ success: true });
+    } else if (message.type === 'PING') {
+      sendResponse({ pong: true });
+    } else if (message.type === 'SHOW_TX_OVERLAY') {
+      // Show transaction decoder overlay
+      requestTxApproval(message.transaction).then(result => {
+        sendResponse(result);
+      });
+      return true; // Keep channel open for async
+    } else if (message.type === 'SHOW_DECODED_TX') {
+      // Show already-decoded transaction
+      createTxOverlay();
+      txOverlay.classList.add('privacyrpc-tx-visible');
+      showTxOverlay(message.decoded);
+      new Promise(resolve => {
+        pendingTxResolve = resolve;
+      }).then(result => {
+        sendResponse(result);
+      });
+      return true;
+    }
+    return true;
+  });
+
+  // Listen for custom events from the page (for demo purposes)
+  window.addEventListener('privacyrpc-show-tx-overlay', async (event) => {
+    if (event.detail && event.detail.decoded) {
+      createTxOverlay();
+      txOverlay.classList.add('privacyrpc-tx-visible');
+      showTxOverlay(event.detail.decoded);
+    }
+  });
+
+  // Listen for transaction interception requests from injected script
+  window.addEventListener('privacyrpc-request', async (event) => {
+    const { type, data, messageId } = event.detail || {};
+
+    if (type === 'INTERCEPT_TRANSACTION') {
+      console.log('[PrivacyRPC] Intercepted transaction request:', data);
+
+      // Check if auto-block is enabled
+      try {
+        const result = await chrome.storage.local.get(['autoBlockEnabled']);
+        if (result.autoBlockEnabled) {
+          console.log('[PrivacyRPC] Auto-block enabled, rejecting transaction');
+          window.dispatchEvent(new CustomEvent('privacyrpc-response', {
+            detail: { messageId, result: { approved: false, autoBlocked: true } }
+          }));
+          return;
+        }
+      } catch (e) {
+        console.log('[PrivacyRPC] Could not check auto-block setting:', e);
+      }
+
+      try {
+        // Decode the first transaction (or combine info for multiple)
+        let decoded = null;
+        const transactions = data.transactions || [];
+
+        if (transactions.length > 0) {
+          // Try to decode via proxy
+          decoded = await decodeTransaction(transactions[0]);
+
+          // If multiple transactions, note that in the summary
+          if (transactions.length > 1 && decoded) {
+            decoded.summary = `${transactions.length} transactions: ${decoded.summary}`;
+          }
+        }
+
+        // Show the overlay and wait for user decision
+        createTxOverlay();
+        txOverlay.classList.add('privacyrpc-tx-visible');
+
+        if (decoded) {
+          // Add origin info to the decoded data
+          decoded.origin = data.origin;
+          decoded.method = data.method;
+          showTxOverlay(decoded);
+        } else {
+          // Show warning that we couldn't decode
+          const loadingEl = txOverlay.querySelector('.privacyrpc-tx-loading');
+          if (loadingEl) {
+            loadingEl.innerHTML = `
+              <div class="privacyrpc-tx-error">
+                <span>${icons.warning}</span>
+                <p>Could not decode transaction</p>
+                <small>From: ${escapeHtml(data.origin || 'Unknown')}</small>
+                <small style="margin-top: 8px;">Review carefully in your wallet</small>
+              </div>
+            `;
+          }
+        }
+
+        // Wait for user decision
+        console.log('[PrivacyRPC] Waiting for user decision...');
+        const result = await new Promise(resolve => {
+          pendingTxResolve = resolve;
+        });
+
+        console.log('[PrivacyRPC] User decided:', result);
+        // Send response back to injected script
+        window.dispatchEvent(new CustomEvent('privacyrpc-response', {
+          detail: { messageId, result }
+        }));
+        console.log('[PrivacyRPC] Response sent to injected script');
+
+      } catch (e) {
+        console.error('[PrivacyRPC] Error handling intercept:', e);
+        // On error, allow the transaction (don't block the user)
+        window.dispatchEvent(new CustomEvent('privacyrpc-response', {
+          detail: { messageId, result: { approved: true }, error: e.message }
+        }));
+      }
+    }
+  });
+
   // Log initialization
-  console.log('[PrivacyRPC] Content script loaded');
+  console.log('[PrivacyRPC] Content script loaded with transaction decoder');
 })();

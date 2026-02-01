@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  test-harness:
+    build: .
+    ports:
+      - "3333:3333"
+    # Network isolation - no access to host network
+    network_mode: bridge

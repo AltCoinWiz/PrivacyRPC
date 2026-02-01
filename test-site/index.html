@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>PrivacyRPC Test Harness</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #5AF5F5;
+    }
+    .subtitle {
+      color: #7D7D7D;
+      margin-bottom: 40px;
+    }
+    .warning-banner {
+      background: linear-gradient(135deg, #1A0A0A 0%, #2D1010 100%);
+      border: 1px solid #FF4757;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 40px;
+    }
+    .warning-banner h3 {
+      color: #FF4757;
+      margin-bottom: 8px;
+    }
+    .warning-banner p {
+      color: #FF8A8A;
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .card h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card h2 .badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .badge.critical { background: #3D1A1A; color: #FF4757; }
+    .badge.high { background: #3D3A0A; color: #FFB800; }
+    .badge.medium { background: #0A1A1A; color: #5AF5F5; }
+    .card p {
+      color: #7D7D7D;
+      font-size: 13px;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .test-list {
+      list-style: none;
+    }
+    .test-list li {
+      margin-bottom: 8px;
+    }
+    .test-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .test-list a:hover {
+      border-color: #5AF5F5;
+      background: #0A0A0A;
+    }
+    .test-list a .arrow {
+      margin-left: auto;
+      color: #7D7D7D;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #5AF5F5;
+    }
+    .status-dot.warning { background: #FFB800; }
+    .status-dot.danger { background: #FF4757; }
+
+    /* Control Panel */
+    .control-panel {
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+    .control-panel h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: #7D7D7D;
+    }
+    .rpc-log {
+      background: #000;
+      border: 1px solid #1E2328;
+      border-radius: 8px;
+      padding: 16px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+    }
+    .rpc-log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #1E2328;
+      display: flex;
+      gap: 12px;
+    }
+    .rpc-log-entry:last-child { border-bottom: none; }
+    .rpc-log-entry .time { color: #7D7D7D; }
+    .rpc-log-entry .method { color: #5AF5F5; }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-secondary {
+      background: #1E2328;
+      color: #fff;
+    }
+    .btn-secondary:hover {
+      background: #2A3038;
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PrivacyRPC Test Harness</h1>
+    <p class="subtitle">Stress test drainer detection features</p>
+
+    <div class="warning-banner">
+      <h3>Testing Environment Only</h3>
+      <p>These pages simulate malicious behavior for testing PrivacyRPC's protection features. Never deploy these to production or share the URLs.</p>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel">
+      <div class="control-header">
+        <h2>RPC Call Monitor</h2>
+        <button class="btn btn-secondary" onclick="clearLog()">Clear Log</button>
+      </div>
+      <div class="rpc-log" id="rpcLog">
+        <div style="color: #7D7D7D;">Waiting for RPC calls...</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Drainer Patterns -->
+      <div class="card">
+        <h2>
+          Drainer Patterns
+          <span class="badge critical">Critical</span>
+        </h2>
+        <p>Test detection of common wallet drainer RPC patterns - rapid enumeration, immediate balance checks, and suspicious transaction flows.</p>
+        <ul class="test-list">
+          <li>
+            <a href="/drainer-patterns/rapid-enumeration.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Rapid Asset Enumeration
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/drainer-patterns/immediate-check.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Immediate Balance Check
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/drainer-patterns/multi-transfer.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Multi-Token Transfer TX
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/drainer-patterns/quick-transaction.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Quick Transaction Request
+              <span class="arrow">-></span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Phishing Patterns -->
+      <div class="card">
+        <h2>
+          Phishing Patterns
+          <span class="badge high">High</span>
+        </h2>
+        <p>Test detection of phishing site patterns - seed phrase forms, fake claim pages, and urgency/scam language.</p>
+        <ul class="test-list">
+          <li>
+            <a href="/phishing/seed-phrase-form.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Seed Phrase Input Form
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/phishing/fake-claim.html" target="_blank">
+              <span class="status-dot warning"></span>
+              Fake Airdrop Claim
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/phishing/urgency-language.html" target="_blank">
+              <span class="status-dot warning"></span>
+              Urgency/Scam Language
+              <span class="arrow">-></span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Suspicious Behavior -->
+      <div class="card">
+        <h2>
+          Suspicious Behavior
+          <span class="badge medium">Medium</span>
+        </h2>
+        <p>Test detection of suspicious site behaviors - wallet probing, social media referrers, and new domain patterns.</p>
+        <ul class="test-list">
+          <li>
+            <a href="/suspicious/wallet-probe.html" target="_blank">
+              <span class="status-dot warning"></span>
+              Wallet Probe Pattern
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/suspicious/social-referrer.html" target="_blank">
+              <span class="status-dot"></span>
+              Social Media Referrer
+              <span class="arrow">-></span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Transaction Analysis -->
+      <div class="card">
+        <h2>
+          Transaction Analysis
+          <span class="badge high">High</span>
+        </h2>
+        <p>Test transaction direction analysis and blind signing detection.</p>
+        <ul class="test-list">
+          <li>
+            <a href="/drainer-patterns/fake-claim-tx.html" target="_blank">
+              <span class="status-dot danger"></span>
+              Claim That Drains
+              <span class="arrow">-></span>
+            </a>
+          </li>
+          <li>
+            <a href="/drainer-patterns/authority-change.html" target="_blank">
+              <span class="status-dot danger"></span>
+              SetAuthority Attack
+              <span class="arrow">-></span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Poll for RPC log updates
+    async function updateLog() {
+      try {
+        const res = await fetch('/api/rpc-log');
+        const log = await res.json();
+        const container = document.getElementById('rpcLog');
+
+        if (log.length === 0) {
+          container.innerHTML = '<div style="color: #7D7D7D;">Waiting for RPC calls...</div>';
+          return;
+        }
+
+        container.innerHTML = log.slice(-20).reverse().map(entry => {
+          const time = new Date(entry.timestamp).toLocaleTimeString();
+          return `
+            <div class="rpc-log-entry">
+              <span class="time">${time}</span>
+              <span class="method">${entry.method}</span>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('Failed to fetch log:', e);
+      }
+    }
+
+    async function clearLog() {
+      await fetch('/api/clear-log', { method: 'POST' });
+      updateLog();
+    }
+
+    // Update every second
+    setInterval(updateLog, 1000);
+    updateLog();
+  </script>
+</body>
+</html>

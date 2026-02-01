@@ -6,6 +6,9 @@
 mod proxy;
 mod native_messaging;
 mod native_host;
+mod transaction_decoder;
+
+pub use transaction_decoder::{decode_transaction, DecodedTransaction};
 
 use parking_lot::Mutex;
 use std::net::TcpListener;
@@ -25,6 +28,7 @@ pub struct AppState {
     pub tor_connected: Mutex<bool>,
     pub stats: Mutex<ProxyStats>,
     pub started_at: Mutex<Option<Instant>>,
+    pub rpc_endpoint: Mutex<Option<String>>,
 }
 
 #[derive(Default, Clone, serde::Serialize)]
@@ -43,6 +47,7 @@ impl Default for AppState {
             tor_connected: Mutex::new(false),
             stats: Mutex::new(ProxyStats::default()),
             started_at: Mutex::new(None),
+            rpc_endpoint: Mutex::new(None),
         }
     }
 }
@@ -190,6 +195,7 @@ fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
     let port = *state.proxy_port.lock();
     let tor_enabled = *state.tor_enabled.lock();
     let tor_connected = *state.tor_connected.lock();
+    let rpc_endpoint = state.rpc_endpoint.lock().clone();
 
     // Read live stats from proxy counters
     let requests = proxy::REQUESTS_PROXIED.load(std::sync::atomic::Ordering::Relaxed);
@@ -204,6 +210,7 @@ fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
         "port": port,
         "torEnabled": tor_enabled,
         "torConnected": tor_connected,
+        "rpcEndpoint": rpc_endpoint,
         "stats": {
             "requests_proxied": requests,
             "bytes_transferred": bytes,
@@ -222,6 +229,63 @@ fn set_port(port: u16, state: State<'_, Arc<AppState>>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_rpc_endpoint(endpoint: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let endpoint = endpoint.trim().to_string();
+    if endpoint.is_empty() {
+        *state.rpc_endpoint.lock() = None;
+        // Clear the global config
+        proxy::set_rpc_endpoint(None);
+        save_config_file(None);
+    } else {
+        // Basic validation - should be a URL
+        if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+            return Err("RPC endpoint must be a valid URL starting with http:// or https://".to_string());
+        }
+        *state.rpc_endpoint.lock() = Some(endpoint.clone());
+        // Update the global proxy config
+        proxy::set_rpc_endpoint(Some(endpoint.clone()));
+        save_config_file(Some(&endpoint));
+        log::info!("RPC endpoint set to: {}", endpoint);
+    }
+    Ok(())
+}
+
+/// Save config to file for persistence and sharing with proxy
+fn save_config_file(endpoint: Option<&str>) {
+    if let Some(config_dir) = directories::ProjectDirs::from("com", "privacyrpc", "PrivacyRPC") {
+        let config_path = config_dir.config_dir().join("config.json");
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let config = serde_json::json!({
+            "rpcEndpoint": endpoint
+        });
+        let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap_or_default());
+        log::info!("Config saved to {:?}", config_path);
+    }
+}
+
+/// Load config from file on startup
+fn load_config_file() -> Option<String> {
+    if let Some(config_dir) = directories::ProjectDirs::from("com", "privacyrpc", "PrivacyRPC") {
+        let config_path = config_dir.config_dir().join("config.json");
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(endpoint) = config.get("rpcEndpoint").and_then(|v| v.as_str()) {
+                    return Some(endpoint.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn get_rpc_endpoint(state: State<'_, Arc<AppState>>) -> Option<String> {
+    state.rpc_endpoint.lock().clone()
+}
+
+#[tauri::command]
 async fn enable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
     *state.tor_enabled.lock() = true;
     log::info!("Tor routing enabled");
@@ -234,6 +298,14 @@ async fn disable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
     *state.tor_connected.lock() = false;
     log::info!("Tor routing disabled");
     Ok(true)
+}
+
+#[tauri::command]
+fn decode_tx(encoded_tx: String) -> Result<serde_json::Value, String> {
+    match transaction_decoder::decode_transaction(&encoded_tx) {
+        Ok(decoded) => serde_json::to_value(decoded).map_err(|e| e.to_string()),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -270,6 +342,14 @@ fn main() {
     };
 
     let state = Arc::new(AppState::default());
+
+    // Load saved config on startup
+    if let Some(endpoint) = load_config_file() {
+        log::info!("Loaded saved RPC endpoint: {}", endpoint);
+        *state.rpc_endpoint.lock() = Some(endpoint.clone());
+        proxy::set_rpc_endpoint(Some(endpoint));
+    }
+
     let state_clone = state.clone();
 
     tauri::Builder::default()
@@ -352,10 +432,13 @@ fn main() {
             stop_proxy,
             get_status,
             set_port,
+            set_rpc_endpoint,
+            get_rpc_endpoint,
             enable_tor,
             disable_tor,
             install_native_host,
             uninstall_native_host,
+            decode_tx,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
