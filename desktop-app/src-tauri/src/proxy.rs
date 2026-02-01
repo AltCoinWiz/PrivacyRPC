@@ -17,13 +17,15 @@ pub static BYTES_TRANSFERRED: AtomicU64 = AtomicU64::new(0);
 
 // Shared proxy configuration (Tor routing + RPC endpoint)
 pub struct ProxyConfig {
+    pub running: bool,
     pub tor_enabled: bool,
     pub tor_socks_port: u16,
     pub rpc_endpoint: Option<String>,
 }
 
-static PROXY_CONFIG: Lazy<Mutex<ProxyConfig>> = Lazy::new(|| {
+pub static PROXY_CONFIG: Lazy<Mutex<ProxyConfig>> = Lazy::new(|| {
     Mutex::new(ProxyConfig {
+        running: false,
         tor_enabled: false,
         tor_socks_port: 0,
         rpc_endpoint: None,
@@ -63,6 +65,9 @@ pub async fn start_proxy_server(port: u16) -> Result<(), Box<dyn std::error::Err
     let listener = TcpListener::bind(addr).await?;
     log::info!("Proxy server listening on {}", addr);
 
+    // Mark as running
+    PROXY_CONFIG.lock().running = true;
+
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
     *SHUTDOWN_TX.lock() = Some(shutdown_tx);
 
@@ -86,6 +91,7 @@ pub async fn start_proxy_server(port: u16) -> Result<(), Box<dyn std::error::Err
                 }
                 _ = &mut shutdown_rx => {
                     log::info!("Proxy server shutting down");
+                    PROXY_CONFIG.lock().running = false;
                     break;
                 }
             }
@@ -99,6 +105,171 @@ pub async fn stop_proxy_server() {
     if let Some(tx) = SHUTDOWN_TX.lock().take() {
         let _ = tx.send(());
     }
+    // Also mark as not running immediately
+    PROXY_CONFIG.lock().running = false;
+}
+
+/// TODO: REMOVE BEFORE PRODUCTION - Test the full routing path
+/// Returns detailed info about each step: Proxy → RPC Endpoint → Tor
+async fn test_routing_path() -> serde_json::Value {
+    let start_time = std::time::Instant::now();
+
+    // Step 1: Get current config
+    let (tor_enabled, tor_socks_port, rpc_endpoint) = {
+        let config = PROXY_CONFIG.lock();
+        (config.tor_enabled, config.tor_socks_port, config.rpc_endpoint.clone())
+    };
+
+    let final_rpc = rpc_endpoint.clone()
+        .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".to_string());
+
+    // Step 2: Build routing path description
+    let mut routing_steps = vec![
+        serde_json::json!({
+            "step": 1,
+            "component": "Browser/Extension",
+            "action": "Request intercepted by PAC script",
+            "status": "ok"
+        }),
+        serde_json::json!({
+            "step": 2,
+            "component": "PrivacyRPC Proxy",
+            "action": format!("Listening on 127.0.0.1:8899"),
+            "status": "ok"
+        }),
+    ];
+
+    // Step 3: RPC endpoint
+    routing_steps.push(serde_json::json!({
+        "step": 3,
+        "component": "RPC Endpoint",
+        "action": format!("Forward to: {}", final_rpc),
+        "mode": if rpc_endpoint.is_some() { "private_rpc" } else { "default" },
+        "status": "ok"
+    }));
+
+    // Step 4: Tor (if enabled)
+    if tor_enabled && tor_socks_port > 0 {
+        routing_steps.push(serde_json::json!({
+            "step": 4,
+            "component": "Tor Network",
+            "action": format!("Route through SOCKS5 127.0.0.1:{}", tor_socks_port),
+            "status": "ok"
+        }));
+    }
+
+    // Step 5: Actually test the connection by getting our exit IP
+    let mut exit_ip = "unknown".to_string();
+    let mut ip_test_status = "skipped";
+    let mut ip_test_error: Option<String> = None;
+
+    // Build client (with or without Tor)
+    let client_result = if tor_enabled && tor_socks_port > 0 {
+        let proxy_url = format!("socks5h://127.0.0.1:{}", tor_socks_port);
+        reqwest::Client::builder()
+            .proxy(reqwest::Proxy::all(&proxy_url).unwrap())
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+    } else {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+    };
+
+    if let Ok(client) = client_result {
+        // Test 1: Get exit IP from ip-api.com
+        match client.get("http://ip-api.com/json").send().await {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    exit_ip = json.get("query")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    ip_test_status = "ok";
+                }
+            }
+            Err(e) => {
+                ip_test_status = "error";
+                ip_test_error = Some(e.to_string());
+            }
+        }
+
+        // Test 2: Check if it's a Tor exit (only if Tor enabled)
+        let is_tor_exit = if tor_enabled {
+            match client.get("https://check.torproject.org/api/ip").send().await {
+                Ok(resp) => {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        json.get("IsTor").and_then(|v| v.as_bool()).unwrap_or(false)
+                    } else {
+                        false
+                    }
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        };
+
+        routing_steps.push(serde_json::json!({
+            "step": routing_steps.len() + 1,
+            "component": "Exit IP Test",
+            "action": format!("Your requests appear from: {}", exit_ip),
+            "is_tor_exit": is_tor_exit,
+            "status": ip_test_status,
+            "error": ip_test_error
+        }));
+
+        // Test 3: Actually hit the RPC endpoint with getHealth
+        let rpc_test_result = client
+            .post(&final_rpc)
+            .header("Content-Type", "application/json")
+            .body(r#"{"jsonrpc":"2.0","id":1,"method":"getHealth"}"#)
+            .send()
+            .await;
+
+        let (rpc_status, rpc_response_time) = match rpc_test_result {
+            Ok(resp) => {
+                let status = resp.status();
+                (
+                    if status.is_success() { "ok" } else { "error" },
+                    start_time.elapsed().as_millis()
+                )
+            }
+            Err(_) => ("error", 0u128),
+        };
+
+        routing_steps.push(serde_json::json!({
+            "step": routing_steps.len() + 1,
+            "component": "RPC Connectivity Test",
+            "action": format!("getHealth to {}", final_rpc),
+            "response_time_ms": rpc_response_time,
+            "status": rpc_status
+        }));
+    }
+
+    let total_time = start_time.elapsed().as_millis();
+
+    serde_json::json!({
+        "test": "routing_path",
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        "config": {
+            "tor_enabled": tor_enabled,
+            "tor_socks_port": tor_socks_port,
+            "rpc_endpoint": rpc_endpoint,
+            "final_rpc": final_rpc
+        },
+        "routing_path": routing_steps,
+        "exit_ip": exit_ip,
+        "total_test_time_ms": total_time,
+        "summary": format!(
+            "Request flow: Browser → Proxy(:8899) → {}{}",
+            if rpc_endpoint.is_some() { "Private RPC" } else { "Default RPC" },
+            if tor_enabled { " → Tor Network" } else { "" }
+        )
+    })
 }
 
 async fn handle_connection(
@@ -173,13 +344,37 @@ async fn handle_connection(
         return Ok(());
     }
 
+    // TODO: REMOVE BEFORE PRODUCTION - Test endpoint to verify routing path
+    if request_line.starts_with("GET /test-routing") {
+        let test_result = test_routing_path().await;
+        let body = serde_json::to_string(&test_result).unwrap_or_default();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        writer.write_all(response.as_bytes()).await?;
+        return Ok(());
+    }
+
     if request_line.starts_with("GET /config") {
-        let endpoint = get_rpc_endpoint();
+        // Get config values without holding lock across await
+        let (endpoint, tor_enabled, tor_socks_port) = {
+            let proxy_cfg = PROXY_CONFIG.lock();
+            (proxy_cfg.rpc_endpoint.clone(), proxy_cfg.tor_enabled, proxy_cfg.tor_socks_port)
+        };
+
+        // Get Tor connection status from tor module
+        let (tor_connected, tor_ip) = crate::tor::get_tor_status();
+
         let mode = if endpoint.is_some() { "private_rpc" } else { "proxy_only" };
         let config_json = serde_json::json!({
             "mode": mode,
             "rpcEndpoint": endpoint,
-            "torEnabled": PROXY_CONFIG.lock().tor_enabled
+            "torEnabled": tor_enabled,
+            "torConnected": tor_connected,
+            "torIp": tor_ip,
+            "torSocksPort": tor_socks_port
         });
         let body = serde_json::to_string(&config_json).unwrap_or_default();
         let response = format!(

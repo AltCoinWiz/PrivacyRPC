@@ -1284,6 +1284,12 @@ function isRpcUrl(urlString) {
   try {
     const url = new URL(urlString);
 
+    // TODO: REMOVE BEFORE PRODUCTION - localhost detection for testing only
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+        (url.port === '3333' || url.pathname.includes('mock-rpc') || url.pathname.includes('rpc'))) {
+      return true;
+    }
+
     // Check against known proxy domains
     const matchesDomain = PROXY_DOMAINS.some(domain => {
       if (domain.startsWith('*.')) {
@@ -1326,6 +1332,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
     // Also check if this looks like a JSON-RPC call (POST with JSON body to any URL)
     let isJsonRpc = false;
+    let rpcMethod = null;
     if (details.method === 'POST' && details.requestBody) {
       try {
         // Check if body contains JSON-RPC patterns
@@ -1337,6 +1344,16 @@ chrome.webRequest.onBeforeRequest.addListener(
               body.includes('simulateTransaction') || body.includes('getRecentBlockhash') ||
               body.includes('getLatestBlockhash') || body.includes('getSignatureStatuses')) {
             isJsonRpc = true;
+
+            // Extract the RPC method name for pattern detection
+            try {
+              const parsed = JSON.parse(body);
+              rpcMethod = parsed.method || null;
+            } catch (e) {
+              // Try regex fallback for method extraction
+              const methodMatch = body.match(/"method"\s*:\s*"([^"]+)"/);
+              if (methodMatch) rpcMethod = methodMatch[1];
+            }
           }
         }
       } catch (e) {
@@ -1372,28 +1389,48 @@ chrome.webRequest.onBeforeRequest.addListener(
         config.zkStats.estimatedSavings += 1000; // Estimate
       }
 
-      // Send activity to popup
+      // Send activity to popup with actual RPC method name
+      const now = Date.now();
       chrome.runtime.sendMessage({
         type: 'RPC_ACTIVITY',
         data: {
-          method: isJsonRpc ? 'JSON-RPC' : 'RPC',
+          method: rpcMethod || (isJsonRpc ? 'JSON-RPC' : 'RPC'),
           url: url.hostname + url.pathname.substring(0, 30),
           success: true,
-          timestamp: Date.now(),
+          timestamp: now,
           proxied: config.enabled,
           tabId: details.tabId,
           isZk: isZkCall
         }
       }).catch(() => {}); // Ignore if popup not open
 
-      // Check for suspicious RPC patterns (high frequency from same tab)
-      if (details.tabId && details.tabId > 0) {
+      // DRAINER PATTERN DETECTION - analyze RPC method sequence
+      if (details.tabId && details.tabId > 0 && rpcMethod) {
+        const warnings = analyzeRpcMethod(details.tabId, rpcMethod, now);
+        if (warnings && warnings.length > 0) {
+          for (const warning of warnings) {
+            notificationHub.notify({
+              type: 'SUSPICIOUS_RPC',
+              title: warning.title,
+              message: warning.message,
+              tabId: details.tabId,
+              actions: [
+                { label: 'Block Site', action: 'block_site' },
+                { label: 'Dismiss', action: 'dismiss' }
+              ]
+            });
+            console.log(`[PrivacyRPC] DRAINER WARNING: ${warning.title} - ${warning.message}`);
+          }
+        }
+      }
+
+      // Fallback: simple call count detection (if method parsing failed)
+      if (details.tabId && details.tabId > 0 && !rpcMethod) {
         const activity = tabActivity.get(details.tabId);
-        if (activity && activity.rpcCalls > 50) {
-          // High RPC call frequency - might be suspicious
+        if (activity && activity.rpcCalls > 10) {
           notificationHub.notify({
             type: 'SUSPICIOUS_RPC',
-            title: 'High RPC Activity Detected',
+            title: 'High RPC Activity',
             message: `${activity.rpcCalls} RPC calls from ${url.hostname}`,
             tabId: details.tabId,
             actions: [
@@ -1428,6 +1465,128 @@ chrome.webRequest.onBeforeRequest.addListener(
 // Track RPC activity per tab
 const tabActivity = new Map();
 
+// ============================================================================
+// DRAINER PATTERN DETECTION
+// Based on DRAINER_PROTECTION_PLAN.md - detects specific RPC call sequences
+// Pattern: getBalance → getTokenAccountsByOwner → multiple getAccountInfo → signTransaction
+// ============================================================================
+
+// Drainer detection state per tab
+const drainerDetection = new Map();
+
+// RPC methods that indicate asset enumeration (drainer scanning what to steal)
+const ENUMERATION_METHODS = [
+  'getBalance',
+  'getTokenAccountsByOwner',
+  'getTokenAccountsByDelegate',
+  'getAccountInfo',
+  'getMultipleAccounts',
+  'getProgramAccounts'
+];
+
+// Methods that indicate transaction preparation
+const TX_PREP_METHODS = [
+  'getLatestBlockhash',
+  'getRecentBlockhash',
+  'getFeeForMessage'
+];
+
+// Methods that indicate transaction execution
+const TX_EXEC_METHODS = [
+  'sendTransaction',
+  'simulateTransaction',
+  'signTransaction',
+  'signAllTransactions'
+];
+
+// Analyze RPC method for drainer patterns
+function analyzeRpcMethod(tabId, method, timestamp) {
+  if (!tabId || tabId < 0) return null;
+
+  let state = drainerDetection.get(tabId);
+  if (!state) {
+    state = {
+      firstCallTime: timestamp,
+      enumerationCalls: [],
+      txPrepCalls: [],
+      txExecCalls: [],
+      warnings: []
+    };
+    drainerDetection.set(tabId, state);
+  }
+
+  // Categorize the method
+  if (ENUMERATION_METHODS.some(m => method.includes(m))) {
+    state.enumerationCalls.push({ method, timestamp });
+  } else if (TX_PREP_METHODS.some(m => method.includes(m))) {
+    state.txPrepCalls.push({ method, timestamp });
+  } else if (TX_EXEC_METHODS.some(m => method.includes(m))) {
+    state.txExecCalls.push({ method, timestamp });
+  }
+
+  // Check for drainer patterns
+  const warnings = [];
+  const timeSinceFirst = timestamp - state.firstCallTime;
+
+  // Pattern 1: Rapid asset enumeration (5+ enumeration calls in 5 seconds)
+  const recentEnumCalls = state.enumerationCalls.filter(c => timestamp - c.timestamp < 5000);
+  if (recentEnumCalls.length >= 5 && !state.warnings.includes('rapid_enumeration')) {
+    state.warnings.push('rapid_enumeration');
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Drainer Pattern: Asset Scan',
+      message: `Site is rapidly scanning your token balances (${recentEnumCalls.length} calls in ${Math.round(timeSinceFirst/1000)}s)`,
+      severity: 'high'
+    });
+  }
+
+  // Pattern 2: getTokenAccountsByOwner followed by multiple getAccountInfo (checking token values)
+  const hasTokenEnum = state.enumerationCalls.some(c => c.method.includes('getTokenAccountsByOwner'));
+  const accountInfoCount = state.enumerationCalls.filter(c => c.method.includes('getAccountInfo')).length;
+  if (hasTokenEnum && accountInfoCount >= 3 && !state.warnings.includes('token_value_check')) {
+    state.warnings.push('token_value_check');
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Drainer Pattern: Token Check',
+      message: 'Site enumerated your tokens then checked multiple account values',
+      severity: 'high'
+    });
+  }
+
+  // Pattern 3: Quick transaction after page load (TX within 10 seconds of first RPC)
+  if (state.txExecCalls.length > 0 && timeSinceFirst < 10000 && !state.warnings.includes('quick_tx')) {
+    state.warnings.push('quick_tx');
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'Quick Transaction Attempt',
+      message: `Transaction requested ${Math.round(timeSinceFirst/1000)}s after page load - verify before signing`,
+      severity: 'critical'
+    });
+  }
+
+  // Pattern 4: Full drainer sequence (enumeration → prep → exec)
+  if (state.enumerationCalls.length >= 3 &&
+      state.txPrepCalls.length >= 1 &&
+      state.txExecCalls.length >= 1 &&
+      !state.warnings.includes('full_drainer')) {
+    state.warnings.push('full_drainer');
+    warnings.push({
+      type: 'DRAINER_PATTERN',
+      title: 'DRAINER DETECTED',
+      message: 'Classic drainer pattern: scanned assets → prepared transaction → requesting signature',
+      severity: 'critical'
+    });
+  }
+
+  drainerDetection.set(tabId, state);
+  return warnings.length > 0 ? warnings : null;
+}
+
+// Clear drainer detection state when tab navigates
+function clearDrainerState(tabId) {
+  drainerDetection.delete(tabId);
+}
+
 // Initialize on startup
 async function initialize() {
   // Enable side panel
@@ -1459,13 +1618,15 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === 'complete') {
     notifyPopupTabChange(tab);
-    // Reset activity for this tab on navigation
+    // Reset activity and drainer detection for this tab on navigation
     if (changeInfo.url) {
       tabActivity.set(tabId, {
         url: changeInfo.url,
         rpcCalls: 0,
         lastActivity: null
       });
+      // Clear drainer detection state for fresh analysis
+      clearDrainerState(tabId);
     }
   }
 });
