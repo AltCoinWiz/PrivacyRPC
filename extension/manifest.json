@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "PrivacyRPC",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApL1S/awoXwRn8XBj0cqseCQdmNhf+cFAMvyYRoSNpn8ya4TDBEkiXiom5O5HMDS6U5ZiUUD/JBZpCkbEnlTdF1yyPmJl20yeigy4UI8bEy8x3FHAM80vcbto8hVvLBCKx3/3PDtAxvXs6VU0ok4EyqaSBF8448oKhMKFbdd8LyJv5F30YH1Y2HJWRAk3zzO3RaKHfSmEmfknXhpzVBBDTbX4u8h7kfjZWQpkAKQDp8aKCc7/S3H3Fnvth+590mZgDtp84IVXAXTTGLr1i3RaDrX+GnboN9bsrIkcgPN5FgzeCWb9h1zf/b5Jxy6CvtXktOQYRNHULy3KBIIe186CJQIDAQAB",
   "version": "2.0.0",
-  "description": "Privacy-first Solana RPC protection with proxy routing, Tor support, and MITM detection",
+  "description": "Privacy-first Solana RPC protection with RPC monitoring, phishing detection, and extension security scanning. Download the free PrivacyRPC desktop app from our website to unlock proxy routing, Tor support, and native alerts.",
   "permissions": [
     "proxy",
     "storage",

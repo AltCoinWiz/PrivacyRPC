@@ -38,5 +38,9 @@ __MACOSX/
 # Gradle (Kotlin SDK)
 .gradle/
 
+# Packed extension
+*.crx
+*.pem
+
 # Tor data (runtime generated)
 tor-data/

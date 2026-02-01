@@ -3,12 +3,14 @@
     windows_subsystem = "windows"
 )]
 
-mod proxy;
-mod native_messaging;
 mod native_host;
+mod native_messaging;
+mod proxy;
+mod tor;
 
 use parking_lot::Mutex;
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{
@@ -25,6 +27,8 @@ pub struct AppState {
     pub tor_connected: Mutex<bool>,
     pub stats: Mutex<ProxyStats>,
     pub started_at: Mutex<Option<Instant>>,
+    pub rpc_provider: Mutex<Option<String>>,
+    pub resource_dir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Default, Clone, serde::Serialize)]
@@ -43,6 +47,8 @@ impl Default for AppState {
             tor_connected: Mutex::new(false),
             stats: Mutex::new(ProxyStats::default()),
             started_at: Mutex::new(None),
+            rpc_provider: Mutex::new(None),
+            resource_dir: Mutex::new(None),
         }
     }
 }
@@ -145,8 +151,11 @@ async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
             let err_str = e.to_string();
 
             // Check if it's a port-in-use error (Windows error 10048 or 10049)
-            if err_str.contains("10048") || err_str.contains("10049") ||
-               err_str.contains("address already in use") || err_str.contains("Address already in use") {
+            if err_str.contains("10048")
+                || err_str.contains("10049")
+                || err_str.contains("address already in use")
+                || err_str.contains("Address already in use")
+            {
                 log::warn!("Port {} in use, attempting to kill old instances...", port);
 
                 // Try to kill old instances
@@ -159,12 +168,18 @@ async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
                     Ok(_) => {
                         *state.proxy_running.lock() = true;
                         *state.started_at.lock() = Some(Instant::now());
-                        log::info!("Proxy server started on port {} (after killing old instance)", port);
+                        log::info!(
+                            "Proxy server started on port {} (after killing old instance)",
+                            port
+                        );
                         Ok(true)
                     }
                     Err(retry_err) => {
                         log::error!("Failed to start proxy after retry: {}", retry_err);
-                        Err(format!("Port {} still in use. Please close other applications using this port.", port))
+                        Err(format!(
+                            "Port {} still in use. Please close other applications using this port.",
+                            port
+                        ))
                     }
                 }
             } else {
@@ -190,6 +205,7 @@ fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
     let port = *state.proxy_port.lock();
     let tor_enabled = *state.tor_enabled.lock();
     let tor_connected = *state.tor_connected.lock();
+    let rpc_provider = state.rpc_provider.lock().clone();
 
     // Read live stats from proxy counters
     let requests = proxy::REQUESTS_PROXIED.load(std::sync::atomic::Ordering::Relaxed);
@@ -204,6 +220,7 @@ fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
         "port": port,
         "torEnabled": tor_enabled,
         "torConnected": tor_connected,
+        "rpcProvider": rpc_provider,
         "stats": {
             "requests_proxied": requests,
             "bytes_transferred": bytes,
@@ -214,7 +231,7 @@ fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
 
 #[tauri::command]
 fn set_port(port: u16, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    if port < 1024 || port > 65535 {
+    if port < 1024 {
         return Err("Port must be between 1024 and 65535".to_string());
     }
     *state.proxy_port.lock() = port;
@@ -222,18 +239,61 @@ fn set_port(port: u16, state: State<'_, Arc<AppState>>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn enable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+async fn enable_tor(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    log::info!("Starting Tor...");
     *state.tor_enabled.lock() = true;
-    log::info!("Tor routing enabled");
-    Ok(true)
+
+    let status = tor::global_enable_tor().await?;
+
+    *state.tor_connected.lock() = status.is_bootstrapped;
+
+    log::info!(
+        "Tor started: socks_port={}, exit_ip={:?}",
+        status.socks_port,
+        status.exit_ip
+    );
+
+    Ok(serde_json::json!({
+        "torEnabled": true,
+        "torConnected": status.is_bootstrapped,
+        "bootstrapProgress": status.bootstrap_progress,
+        "exitIp": status.exit_ip,
+        "socksPort": status.socks_port,
+    }))
 }
 
 #[tauri::command]
 async fn disable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+    log::info!("Stopping Tor...");
+
+    tor::global_disable_tor().await?;
+
     *state.tor_enabled.lock() = false;
     *state.tor_connected.lock() = false;
-    log::info!("Tor routing disabled");
+
+    log::info!("Tor stopped");
     Ok(true)
+}
+
+#[tauri::command]
+async fn new_circuit(_state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    log::info!("Requesting new Tor circuit...");
+
+    let new_ip = tor::global_new_circuit().await?;
+
+    log::info!("New circuit established, exit IP: {:?}", new_ip);
+
+    Ok(serde_json::json!({
+        "exitIp": new_ip,
+    }))
+}
+
+#[tauri::command]
+fn set_rpc_provider(url: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let url = if url.is_empty() { None } else { Some(url) };
+    proxy::set_rpc_provider(url.clone());
+    *state.rpc_provider.lock() = url;
+    Ok(())
 }
 
 #[tauri::command]
@@ -276,6 +336,12 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(state)
         .setup(move |app| {
+            // Store the resource dir for Tor binary resolution
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                *state_clone.resource_dir.lock() = Some(resource_dir.clone());
+                tor::set_resource_dir(resource_dir);
+            }
+
             // Auto-start proxy if launched with --autostart flag
             if autostart {
                 let state = state_clone.clone();
@@ -304,7 +370,7 @@ fn main() {
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         app.exit(0);
@@ -354,6 +420,8 @@ fn main() {
             set_port,
             enable_tor,
             disable_tor,
+            new_circuit,
+            set_rpc_provider,
             install_native_host,
             uninstall_native_host,
         ])

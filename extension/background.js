@@ -297,6 +297,19 @@ function connectNativeHost() {
       } else if (msg.status === 'error') {
         console.error('[PrivacyRPC] Proxy error:', msg.error);
       }
+
+      // Forward Tor/RPC status fields to popup
+      if (msg.tor_enabled !== undefined || msg.tor_ip || msg.bootstrap_progress !== undefined || msg.rpc_provider !== undefined) {
+        chrome.runtime.sendMessage({
+          type: 'TOR_STATUS',
+          connected: msg.tor_connected || (msg.tor_enabled && msg.tor_ip),
+          ip: msg.tor_ip || null,
+          torEnabled: msg.tor_enabled || false,
+          bootstrapProgress: msg.bootstrap_progress || 0,
+          rpcProvider: msg.rpc_provider || null
+        }).catch(() => {}); // Ignore if popup not open
+      }
+
       // Resolve pending status check if waiting
       if (pendingStatusResolve) {
         const resolve = pendingStatusResolve;
@@ -332,6 +345,60 @@ async function stopProxyServer() {
   const port = connectNativeHost();
   if (port) {
     port.postMessage({ action: 'stop' });
+    return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// TOR / RPC CONTROL — Native messaging commands
+// ============================================================================
+
+// Enable Tor routing via native host -> desktop app
+async function enableTor() {
+  const port = connectNativeHost();
+  if (port) {
+    port.postMessage({ action: 'enable_tor' });
+    return true;
+  }
+  return false;
+}
+
+// Disable Tor routing
+async function disableTor() {
+  const port = connectNativeHost();
+  if (port) {
+    port.postMessage({ action: 'disable_tor' });
+    return true;
+  }
+  return false;
+}
+
+// Request a new Tor circuit (new exit IP)
+async function newCircuit() {
+  const port = connectNativeHost();
+  if (port) {
+    port.postMessage({ action: 'new_circuit' });
+    return true;
+  }
+  return false;
+}
+
+// Set custom RPC provider URL
+async function setRpcProvider(url) {
+  const port = connectNativeHost();
+  if (port) {
+    port.postMessage({ action: 'set_rpc', rpc_url: url });
+    return true;
+  }
+  return false;
+}
+
+// Clear custom RPC provider (revert to default)
+async function clearRpcProvider() {
+  const port = connectNativeHost();
+  if (port) {
+    port.postMessage({ action: 'clear_rpc' });
     return true;
   }
   return false;
@@ -876,6 +943,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       sendResponse({ success: true });
       break;
+
+    case 'START_TOR':
+      enableTor().then(result => {
+        sendResponse({ success: result });
+      });
+      return true;
+
+    case 'STOP_TOR':
+      disableTor().then(result => {
+        sendResponse({ success: result });
+      });
+      return true;
+
+    case 'NEW_CIRCUIT':
+      newCircuit().then(result => {
+        sendResponse({ success: result });
+      });
+      return true;
+
+    case 'SET_RPC_PROVIDER':
+      if (message.url) {
+        setRpcProvider(message.url).then(result => {
+          sendResponse({ success: result });
+        });
+      } else {
+        clearRpcProvider().then(result => {
+          sendResponse({ success: result });
+        });
+      }
+      return true;
 
     case 'CHECK_PROXY':
       checkProxyHealth().then(result => {

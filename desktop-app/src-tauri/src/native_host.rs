@@ -1,11 +1,11 @@
-use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize};
+use std::io::{self, Read, Write};
 
 #[derive(Deserialize, Debug)]
 pub struct NativeMessage {
     pub action: String,
     #[serde(default)]
-    pub port: Option<u16>,
+    pub rpc_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -17,6 +17,46 @@ pub struct NativeResponse {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub running: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tor_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tor_connected: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tor_ip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bootstrap_progress: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpc_provider: Option<String>,
+}
+
+impl NativeResponse {
+    fn ok() -> Self {
+        NativeResponse {
+            status: "ok".to_string(),
+            port: None,
+            error: None,
+            running: None,
+            tor_enabled: None,
+            tor_connected: None,
+            tor_ip: None,
+            bootstrap_progress: None,
+            rpc_provider: None,
+        }
+    }
+
+    fn error(msg: String) -> Self {
+        NativeResponse {
+            status: "error".to_string(),
+            port: None,
+            error: Some(msg),
+            running: None,
+            tor_enabled: None,
+            tor_connected: None,
+            tor_ip: None,
+            bootstrap_progress: None,
+            rpc_provider: None,
+        }
+    }
 }
 
 /// Read a native messaging message from stdin
@@ -97,8 +137,8 @@ async fn handle_message(msg: NativeMessage) -> NativeResponse {
                 return NativeResponse {
                     status: "started".to_string(),
                     port: Some(8899),
-                    error: None,
                     running: Some(true),
+                    ..NativeResponse::ok()
                 };
             }
 
@@ -115,44 +155,120 @@ async fn handle_message(msg: NativeMessage) -> NativeResponse {
                     NativeResponse {
                         status: if running { "started" } else { "starting" }.to_string(),
                         port: Some(8899),
-                        error: None,
                         running: Some(running),
+                        ..NativeResponse::ok()
                     }
                 }
-                Err(e) => NativeResponse {
-                    status: "error".to_string(),
-                    port: None,
-                    error: Some(format!("Failed to launch app: {}", e)),
-                    running: Some(false),
-                },
+                Err(e) => NativeResponse::error(format!("Failed to launch app: {}", e)),
             }
         }
         "stop" => {
             // Don't actually stop - just report status
-            // User should stop from GUI app
             let running = check_proxy_running().await;
             NativeResponse {
                 status: "ok".to_string(),
                 port: Some(8899),
-                error: None,
                 running: Some(running),
+                ..NativeResponse::ok()
             }
         }
-        "status" => {
-            let running = check_proxy_running().await;
-            NativeResponse {
-                status: "ok".to_string(),
-                port: Some(8899),
-                error: None,
-                running: Some(running),
+        "status" | "get_status" => {
+            // Get full status including tor and rpc info
+            match get_full_status().await {
+                Some(status) => status,
+                None => {
+                    let running = check_proxy_running().await;
+                    NativeResponse {
+                        status: "ok".to_string(),
+                        port: Some(8899),
+                        running: Some(running),
+                        ..NativeResponse::ok()
+                    }
+                }
             }
         }
-        _ => NativeResponse {
-            status: "error".to_string(),
-            port: None,
-            error: Some(format!("Unknown action: {}", msg.action)),
-            running: None,
-        },
+        "enable_tor" => {
+            // Forward to proxy control endpoint
+            match proxy_control_post("/control/enable_tor", None).await {
+                Ok(json) => {
+                    let tor_enabled = json
+                        .get("tor_enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    // Now get the full status to get exit IP etc.
+                    let status = get_full_status().await;
+                    if let Some(mut s) = status {
+                        s.tor_enabled = Some(tor_enabled);
+                        s
+                    } else {
+                        NativeResponse {
+                            status: "ok".to_string(),
+                            tor_enabled: Some(tor_enabled),
+                            ..NativeResponse::ok()
+                        }
+                    }
+                }
+                Err(e) => NativeResponse::error(format!("Failed to enable Tor: {}", e)),
+            }
+        }
+        "disable_tor" => {
+            match proxy_control_post("/control/disable_tor", None).await {
+                Ok(_) => NativeResponse {
+                    status: "ok".to_string(),
+                    tor_enabled: Some(false),
+                    tor_connected: Some(false),
+                    tor_ip: None,
+                    ..NativeResponse::ok()
+                },
+                Err(e) => NativeResponse::error(format!("Failed to disable Tor: {}", e)),
+            }
+        }
+        "new_circuit" => {
+            match proxy_control_post("/control/new_circuit", None).await {
+                Ok(json) => {
+                    let exit_ip = json
+                        .get("exitIp")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    NativeResponse {
+                        status: "ok".to_string(),
+                        tor_ip: exit_ip,
+                        ..NativeResponse::ok()
+                    }
+                }
+                Err(e) => NativeResponse::error(format!("Failed to create new circuit: {}", e)),
+            }
+        }
+        "set_rpc" => {
+            let rpc_url = msg.rpc_url.unwrap_or_default();
+            let body = serde_json::json!({"url": rpc_url});
+            match proxy_control_post("/control/set_rpc", Some(body)).await {
+                Ok(json) => {
+                    let provider = json
+                        .get("rpc_provider")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    NativeResponse {
+                        status: "ok".to_string(),
+                        rpc_provider: provider,
+                        ..NativeResponse::ok()
+                    }
+                }
+                Err(e) => NativeResponse::error(format!("Failed to set RPC: {}", e)),
+            }
+        }
+        "clear_rpc" => {
+            match proxy_control_post("/control/clear_rpc", None).await {
+                Ok(_) => NativeResponse {
+                    status: "ok".to_string(),
+                    rpc_provider: None,
+                    ..NativeResponse::ok()
+                },
+                Err(e) => NativeResponse::error(format!("Failed to clear RPC: {}", e)),
+            }
+        }
+        _ => NativeResponse::error(format!("Unknown action: {}", msg.action)),
     }
 }
 
@@ -166,4 +282,67 @@ async fn check_proxy_running() -> bool {
         Ok(resp) => resp.status().is_success(),
         Err(_) => false,
     }
+}
+
+/// Get full status from the proxy's /status endpoint
+async fn get_full_status() -> Option<NativeResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("http://127.0.0.1:8899/status")
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .ok()?;
+
+    let json: serde_json::Value = resp.json().await.ok()?;
+
+    Some(NativeResponse {
+        status: "ok".to_string(),
+        port: Some(8899),
+        error: None,
+        running: json.get("running").and_then(|v| v.as_bool()),
+        tor_enabled: json.get("tor_enabled").and_then(|v| v.as_bool()),
+        tor_connected: None, // Will be set by caller if needed
+        tor_ip: json
+            .get("tor_ip")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        bootstrap_progress: json
+            .get("bootstrap_progress")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u8),
+        rpc_provider: json
+            .get("rpc_provider")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    })
+}
+
+/// POST to a proxy control endpoint
+async fn proxy_control_post(
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:8899{}", path);
+
+    let mut req = client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(30));
+
+    if let Some(body) = body {
+        req = req
+            .header("Content-Type", "application/json")
+            .body(body.to_string());
+    }
+
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Control endpoint returned {}", resp.status()));
+    }
+
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
 }

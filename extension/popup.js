@@ -457,6 +457,19 @@ function setupEventListeners() {
         host: config.proxyHost,
         port: config.proxyPort
       });
+
+      // Send RPC provider to desktop app via native messaging
+      if (config.customRpc) {
+        chrome.runtime.sendMessage({
+          type: 'SET_RPC_PROVIDER',
+          url: config.customRpc
+        });
+      } else {
+        chrome.runtime.sendMessage({
+          type: 'SET_RPC_PROVIDER',
+          url: null
+        });
+      }
     });
   }
 
@@ -888,33 +901,45 @@ async function checkProxyStatus() {
   }
 }
 
-// Start Tor connection
+// Start Tor connection — sends command to background -> native host -> desktop app
 async function startTorConnection() {
   log('Starting Tor connection...');
   addAlert('info', 'Tor Starting', 'Connecting to Tor network...');
 
-  chrome.runtime.sendMessage({ type: 'START_TOR' });
+  // Show bootstrap progress UI
+  if (elements.torStatus) {
+    elements.torStatus.style.display = 'flex';
+    elements.torStatus.className = 'tor-status connecting';
+    if (elements.torSpinner) elements.torSpinner.style.display = 'block';
+    if (elements.torStatusText) elements.torStatusText.textContent = 'Bootstrapping Tor...';
+    if (elements.torIp) elements.torIp.textContent = '';
+  }
 
-  // Simulate connection (in real implementation, this would come from background)
-  setTimeout(() => {
-    config.torConnected = true;
-    config.torIp = '185.220.101.' + Math.floor(Math.random() * 255);
-    saveConfig();
-    updateUI();
-    addAlert('success', 'Tor Connected', `Exit IP: ${config.torIp}`);
-  }, 3000);
+  // Send START_TOR to background, which forwards to native host
+  try {
+    await chrome.runtime.sendMessage({ type: 'START_TOR' });
+  } catch (e) {
+    log('Failed to send START_TOR: ' + e.message);
+    addAlert('danger', 'Tor Error', 'Failed to start Tor: ' + e.message);
+  }
+  // Actual connection status will arrive via TOR_STATUS message from background
 }
 
 // Stop Tor connection
-function stopTorConnection() {
+async function stopTorConnection() {
   log('Stopping Tor connection...');
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'STOP_TOR' });
+  } catch (e) {
+    log('Failed to send STOP_TOR: ' + e.message);
+  }
+
   config.torConnected = false;
   config.torIp = null;
   saveConfig();
   updateUI();
   addAlert('info', 'Tor Disconnected', 'Tor routing disabled');
-
-  chrome.runtime.sendMessage({ type: 'STOP_TOR' });
 }
 
 // Scan website
@@ -1879,8 +1904,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'TOR_STATUS':
       config.torConnected = message.connected;
       config.torIp = message.ip;
+      if (message.torEnabled !== undefined) {
+        config.torEnabled = message.torEnabled;
+      }
+      if (message.rpcProvider !== undefined) {
+        config.customRpc = message.rpcProvider || '';
+      }
       saveConfig();
+
+      // Update bootstrap progress display
+      if (message.bootstrapProgress !== undefined && message.bootstrapProgress < 100 && config.torEnabled) {
+        if (elements.torStatus) {
+          elements.torStatus.style.display = 'flex';
+          elements.torStatus.className = 'tor-status connecting';
+          if (elements.torSpinner) elements.torSpinner.style.display = 'block';
+          if (elements.torStatusText) elements.torStatusText.textContent = `Bootstrapping Tor... ${message.bootstrapProgress}%`;
+          if (elements.torIp) elements.torIp.textContent = '';
+        }
+      }
+
       updateUI();
+
+      // Show alert on connection
+      if (message.connected && message.ip) {
+        addAlert('success', 'Tor Connected', `Exit IP: ${message.ip}`);
+      }
       break;
   }
 });
