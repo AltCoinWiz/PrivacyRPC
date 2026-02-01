@@ -82,6 +82,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; ===================== PAGES =====================
 
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "license_file"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH

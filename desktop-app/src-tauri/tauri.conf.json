@@ -33,6 +33,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "licenseFile": "LICENSE.rtf",
+    "resources": [
+      "tor/**/*"
+    ],
     "targets": ["nsis", "deb", "appimage", "dmg"],
     "windows": {
       "nsis": {

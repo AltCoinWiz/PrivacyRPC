@@ -1,11 +1,10 @@
-use directories::ProjectDirs;
 use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
 // Extension ID - update this after publishing to Chrome Web Store
 // For development, we also allow all extensions with "*"
-const EXTENSION_ID: &str = "fboajdepoolkoloabfbmcjlmonmflndf";
+const EXTENSION_ID: &str = "hkcdmipfklibhakdpojocdoilebhiaam";
 const HOST_NAME: &str = "com.privacyrpc.host";
 
 #[derive(Error, Debug)]
