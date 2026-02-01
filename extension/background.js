@@ -719,10 +719,10 @@ async function updateIcon() {
     }
 
     // Draw status dots in bottom-right corner
-    const dotSize = 12;
-    const spacing = 14;
-    const startX = size - 50;
-    const startY = size - 18;
+    const dotSize = 20;
+    const spacing = 22;
+    const startX = size - 75;
+    const startY = size - 22;
 
     // Proxy dot (cyan) - first dot
     if (config.enabled) {
