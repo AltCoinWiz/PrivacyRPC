@@ -291,23 +291,29 @@ function connectNativeHost() {
     nativePort = chrome.runtime.connectNative(NATIVE_HOST);
 
     nativePort.onMessage.addListener((msg) => {
-      console.log('[PrivacyRPC] Native host:', msg);
       if (msg.status === 'started') {
-        console.log('[PrivacyRPC] Proxy started on port', msg.port);
+        // Proxy started
       } else if (msg.status === 'error') {
-        console.error('[PrivacyRPC] Proxy error:', msg.error);
+        // Proxy error
       }
 
-      // Forward Tor/RPC status fields to popup
+      // Forward Tor/RPC status fields to popup and update config
       if (msg.tor_enabled !== undefined || msg.tor_ip || msg.bootstrap_progress !== undefined || msg.rpc_provider !== undefined) {
+        config.torEnabled = msg.tor_enabled || false;
+        config.torConnected = msg.tor_connected || (msg.tor_enabled && !!msg.tor_ip);
+        config.torIp = msg.tor_ip || null;
+
         chrome.runtime.sendMessage({
           type: 'TOR_STATUS',
-          connected: msg.tor_connected || (msg.tor_enabled && msg.tor_ip),
-          ip: msg.tor_ip || null,
-          torEnabled: msg.tor_enabled || false,
+          connected: config.torConnected,
+          ip: config.torIp,
+          torEnabled: config.torEnabled,
           bootstrapProgress: msg.bootstrap_progress || 0,
           rpcProvider: msg.rpc_provider || null
         }).catch(() => {}); // Ignore if popup not open
+
+        // Update icon to reflect new status
+        updateIcon();
       }
 
       // Resolve pending status check if waiting
@@ -421,6 +427,9 @@ const DEFAULT_CONFIG = {
   proxyType: 'HTTP', // HTTP or SOCKS5
   proxyMode: 'proxy_only', // 'proxy_only' or 'private_rpc'
   rpcEndpoint: null, // User's private RPC endpoint (Helius, etc.)
+  torEnabled: false,
+  torConnected: false,
+  torIp: null,
   stats: {
     proxiedRequests: 0,
     lastActivity: null
@@ -690,10 +699,75 @@ async function applyProxySettings() {
   }
 }
 
+// Update icon with status dots
+async function updateIcon() {
+  try {
+    const size = 128;
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+
+    // Load base icon
+    try {
+      const response = await fetch(chrome.runtime.getURL('icons/icon128.png'));
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+      ctx.drawImage(bitmap, 0, 0, size, size);
+    } catch (e) {
+      // Fallback: draw a simple shield shape
+      ctx.fillStyle = '#1E2328';
+      ctx.fillRect(0, 0, size, size);
+    }
+
+    // Draw status dots in bottom-right corner
+    const dotSize = 12;
+    const spacing = 14;
+    const startX = size - 50;
+    const startY = size - 18;
+
+    // Proxy dot (cyan) - first dot
+    if (config.enabled) {
+      ctx.beginPath();
+      ctx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#5AF5F5';
+      ctx.fill();
+    }
+
+    // RPC dot (purple) - second dot
+    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      ctx.beginPath();
+      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#A855F7';
+      ctx.fill();
+    }
+
+    // Tor dot (orange) - third dot
+    if (config.torConnected) {
+      ctx.beginPath();
+      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#F97316';
+      ctx.fill();
+    } else if (config.torEnabled) {
+      // Connecting - yellow dot
+      ctx.beginPath();
+      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFB800';
+      ctx.fill();
+    }
+
+    // Convert to ImageData and set as icon
+    const imageData = ctx.getImageData(0, 0, size, size);
+    await chrome.action.setIcon({ imageData: { 128: imageData } });
+  } catch (e) {
+    // Icon update failed - not critical, don't crash
+  }
+}
+
 // Update badge - disabled for clean look
 function updateBadge(enabled, text = null) {
-  // Clear badge - we don't want text on the icon
+  // Clear badge text
   chrome.action.setBadgeText({ text: '' });
+  // Update icon with status dots
+  updateIcon();
 }
 
 // Load config from storage
@@ -757,25 +831,32 @@ async function fetchProxyConfig() {
     if (response.ok) {
       const proxyConfig = await response.json();
 
-      // Update our config with proxy settings
+      // Update our config with all proxy settings
       config.proxyMode = proxyConfig.mode || 'proxy_only';
       config.rpcEndpoint = proxyConfig.rpcEndpoint || null;
+      config.torEnabled = proxyConfig.torEnabled || false;
+      config.torConnected = proxyConfig.torConnected || false;
+      config.torIp = proxyConfig.torIp || null;
 
-      console.log('[PrivacyRPC] Proxy config:', proxyConfig);
+      // Update icon to reflect current mode
+      updateIcon();
 
       // Notify popup of config change
       chrome.runtime.sendMessage({
         type: 'CONFIG_UPDATED',
         data: {
           mode: config.proxyMode,
-          rpcEndpoint: config.rpcEndpoint
+          rpcEndpoint: config.rpcEndpoint,
+          torEnabled: config.torEnabled,
+          torConnected: config.torConnected,
+          torIp: config.torIp
         }
-      }).catch(() => {}); // Ignore if popup not open
+      }).catch(() => {});
 
       return proxyConfig;
     }
   } catch (e) {
-    console.log('[PrivacyRPC] Could not fetch proxy config:', e.message);
+    // Silently fail - proxy might not be running
   }
   return null;
 }
@@ -1033,7 +1114,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           mode: config.proxyMode,
           rpcEndpoint: config.rpcEndpoint,
-          ...result
+          torEnabled: config.torEnabled,
+          torConnected: config.torConnected,
+          torIp: config.torIp,
+          ...(result || {})
         });
       });
       return true; // Keep channel open for async response
@@ -1346,27 +1430,23 @@ const tabActivity = new Map();
 
 // Initialize on startup
 async function initialize() {
-  // Clear any badge on startup - we want clean icon
-  chrome.action.setBadgeText({ text: '' });
-
   // Enable side panel
   try {
     await chrome.sidePanel.setOptions({
       enabled: true
     });
   } catch (e) {
-    console.log('[PrivacyRPC] Side panel not available');
+    // Side panel not available
   }
 
   await loadConfig();
   await applyProxySettings();
 
-  // Fetch proxy config if enabled
-  if (config.enabled) {
-    await fetchProxyConfig();
-  }
+  // Fetch proxy config to get current state from desktop app
+  await fetchProxyConfig();
 
-  console.log('[PrivacyRPC] Extension initialized, enabled:', config.enabled, 'mode:', config.proxyMode);
+  // Update icon with current status
+  updateIcon();
 }
 
 // Listen for tab changes
@@ -1408,9 +1488,9 @@ function notifyPopupTabChange(tab) {
 
 initialize();
 
-// Periodic health check
-chrome.alarms.create('healthCheck', { periodInMinutes: 1 });
-let lastProxyStatus = null; // Track last known status to avoid repeat notifications
+// Periodic health check - every 2 minutes (WebSocket handles real-time updates)
+chrome.alarms.create('healthCheck', { periodInMinutes: 2 });
+let lastProxyStatus = null;
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'healthCheck' && config.enabled) {
@@ -1419,7 +1499,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     // Only notify if status changed from running to not running
     if (lastProxyStatus === true && currentStatus === false) {
-      console.warn('[PrivacyRPC] Proxy went offline');
       notificationHub.notify({
         type: 'PROXY_ERROR',
         title: 'Proxy Offline',
@@ -1432,10 +1511,5 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
 
     lastProxyStatus = currentStatus;
-
-    // Also fetch proxy config to check mode/endpoint
-    if (currentStatus) {
-      await fetchProxyConfig();
-    }
   }
 });

@@ -1189,11 +1189,11 @@
             <span style="font-size: 9px; color: #7D7D7D;">PROXY</span>
           </div>
           <div style="display: flex; align-items: center; gap: 4px;" title="Private RPC Status">
-            <span class="status-dot" id="rpcDot" style="background: #1E2328;"></span>
+            <span class="status-dot" id="rpcDot"></span>
             <span style="font-size: 9px; color: #7D7D7D;">RPC</span>
           </div>
           <div style="display: flex; align-items: center; gap: 4px;" title="Tor Routing Status">
-            <span class="status-dot" id="torHeaderDot" style="background: #1E2328;"></span>
+            <span class="status-dot" id="torHeaderDot"></span>
             <span style="font-size: 9px; color: #7D7D7D;">TOR</span>
           </div>
         </div>
@@ -1233,12 +1233,20 @@
           <div class="toggle-row">
             <div class="toggle-info">
               <h4>PrivacyRPC Protection</h4>
-              <p>Route RPC through secure proxy</p>
+              <p id="protectionSubtext">Route RPC through secure proxy</p>
             </div>
             <label class="toggle">
               <input type="checkbox" id="toggleProtection">
               <span class="toggle-slider"></span>
             </label>
+          </div>
+          <!-- Desktop app required message -->
+          <div id="desktopAppRequired" style="display: none; padding: 10px 12px; background: #0A0A0A; border-radius: 8px; margin-top: 8px; border: 1px solid #1E2328;">
+            <p style="font-size: 11px; color: #FFB800; margin-bottom: 6px;">Open desktop app and click "Start Proxy"</p>
+            <a href="https://www.privacyrpc.com/" target="_blank" style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #7D7D7D; text-decoration: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Don't have it? Download here
+            </a>
           </div>
           <div class="toggle-row">
             <div class="toggle-info">

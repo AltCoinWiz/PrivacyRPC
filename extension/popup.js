@@ -87,6 +87,8 @@ function initElements() {
 
     // Toggles
     toggleProtection: document.getElementById('toggleProtection'),
+    protectionSubtext: document.getElementById('protectionSubtext'),
+    desktopAppRequired: document.getElementById('desktopAppRequired'),
     torStatus: document.getElementById('torStatus'),
     torDot: document.getElementById('torDot'),
     torLabel: document.getElementById('torLabel'),
@@ -162,18 +164,17 @@ async function init() {
   await loadConfig();
   await loadNotificationSettings();
   setupEventListeners();
-  // If protection is enabled, show as running immediately (quick fix for UI)
-  if (config.enabled) {
-    proxyRunning = true;
-  }
+  // Check actual proxy status first
+  await checkProxyStatus();
+  // Fetch proxy config (mode/endpoint) from desktop app BEFORE rendering
+  await fetchProxyConfig();
+  // Now render with correct data
   updateUI();
   updateNotificationSettingsUI();
   getCurrentTab();
   updateZKStats();
   getInstalledExtensions();
   getBackgroundActivity();
-  // Fetch proxy config to get mode/endpoint from desktop app
-  fetchProxyConfig();
 }
 
 // Fetch proxy config from desktop app
@@ -183,11 +184,12 @@ async function fetchProxyConfig() {
     if (result) {
       config.proxyMode = result.mode || 'proxy_only';
       config.rpcEndpoint = result.rpcEndpoint || null;
-      updateUI();
-      log(`Proxy mode: ${config.proxyMode}, endpoint: ${config.rpcEndpoint ? 'configured' : 'none'}`);
+      config.torEnabled = result.torEnabled || false;
+      config.torConnected = result.torConnected || false;
+      config.torIp = result.torIp || null;
     }
   } catch (e) {
-    log('Failed to fetch proxy config: ' + e.message);
+    // Silently fail - proxy might not be running
   }
 }
 
@@ -414,22 +416,42 @@ function setupEventListeners() {
   // Protection toggle
   if (elements.toggleProtection) {
     elements.toggleProtection.addEventListener('change', async (e) => {
-      config.enabled = e.target.checked;
-      await saveConfig();
+      const wantsEnabled = e.target.checked;
 
-      // Send message to background - this will start/stop proxy via native messaging
-      chrome.runtime.sendMessage({
-        type: 'SET_ENABLED',
-        enabled: config.enabled
-      });
+      // If trying to enable, first check if desktop app proxy is actually running
+      if (wantsEnabled) {
+        const response = await chrome.runtime.sendMessage({ type: 'CHECK_PROXY' });
+        const isProxyRunning = response && response.running;
 
-      if (config.enabled) {
-        // Immediately show as running when enabled (quick fix for UI feedback)
+        if (!isProxyRunning) {
+          // Revert toggle - proxy not running
+          e.target.checked = false;
+          addAlert('warning', 'Desktop App Required', 'Start the PrivacyRPC desktop app first to enable protection');
+          return;
+        }
+
+        // Proxy is running, proceed with enabling
+        config.enabled = true;
         proxyRunning = true;
+        await saveConfig();
+
+        chrome.runtime.sendMessage({
+          type: 'SET_ENABLED',
+          enabled: true
+        });
+
         updateUI();
         addAlert('success', 'Protection Active', 'RPC traffic is now being routed through proxy');
       } else {
-        proxyRunning = false;
+        // Disabling - always allowed
+        config.enabled = false;
+        await saveConfig();
+
+        chrome.runtime.sendMessage({
+          type: 'SET_ENABLED',
+          enabled: false
+        });
+
         updateUI();
         addAlert('info', 'Protection Disabled', 'RPC traffic is now direct');
       }
@@ -710,29 +732,30 @@ function updateUI() {
   const isFullyProtected = proxyRunning && (hasPrivateRpc || torActive);
 
   // Header status lights (3 separate indicators)
-  // Proxy light (cyan) - on when proxy is running
+
+  // PROXY light (cyan) - on when desktop app proxy is running
   if (elements.proxyDot) {
-    if (proxyRunning && config.enabled) {
+    if (proxyRunning) {
       elements.proxyDot.className = 'status-dot active';
     } else {
       elements.proxyDot.className = 'status-dot';
     }
   }
 
-  // RPC light (purple) - on when private RPC is configured
+  // RPC light (purple) - on when private RPC is configured in desktop app
   if (elements.rpcDot) {
-    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+    if (proxyRunning && config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
       elements.rpcDot.className = 'status-dot active-purple';
     } else {
       elements.rpcDot.className = 'status-dot';
     }
   }
 
-  // Tor light (orange) - on when Tor is connected
+  // TOR light (orange) - on when Tor is connected
   if (elements.torHeaderDot) {
-    if (config.torConnected) {
+    if (proxyRunning && config.torConnected) {
       elements.torHeaderDot.className = 'status-dot active-orange';
-    } else if (config.torEnabled) {
+    } else if (proxyRunning && config.torEnabled) {
       elements.torHeaderDot.className = 'status-dot warning'; // connecting
     } else {
       elements.torHeaderDot.className = 'status-dot';
@@ -740,21 +763,22 @@ function updateUI() {
   }
 
   // Status banner
-  if (!config.enabled) {
+  if (!proxyRunning) {
+    // Desktop app not running
     elements.statusBanner.className = 'status-banner danger';
     elements.statusBanner.style.cursor = 'default';
     elements.statusIcon.innerHTML = `<span class="icon icon-lg">${svgIcons.shieldOff}</span>`;
     elements.statusIcon.style.color = '#FF4757';
-    elements.statusTitle.textContent = 'Protection Disabled';
-    elements.statusSubtitle.textContent = 'Your RPC traffic is not protected';
-  } else if (!proxyRunning) {
-    // Proxy is offline
-    elements.statusBanner.className = 'status-banner danger';
-    elements.statusBanner.style.cursor = 'pointer';
-    elements.statusIcon.innerHTML = `<span class="icon icon-lg">${svgIcons.warning}</span>`;
-    elements.statusIcon.style.color = '#FF4757';
-    elements.statusTitle.textContent = 'Proxy Offline';
-    elements.statusSubtitle.textContent = 'Start the PrivacyRPC desktop app';
+    elements.statusTitle.textContent = 'Proxy Not Running';
+    elements.statusSubtitle.textContent = 'Open desktop app and click Start Proxy';
+  } else if (!config.enabled) {
+    // Proxy running but protection not enabled
+    elements.statusBanner.className = 'status-banner warning';
+    elements.statusBanner.style.cursor = 'default';
+    elements.statusIcon.innerHTML = `<span class="icon icon-lg">${svgIcons.shield}</span>`;
+    elements.statusIcon.style.color = '#FFB800';
+    elements.statusTitle.textContent = 'Proxy Available';
+    elements.statusSubtitle.textContent = 'Enable protection below to route RPC';
   } else if (isFullyProtected) {
     // Full protection with private RPC or Tor
     elements.statusBanner.className = 'status-banner protected';
@@ -777,6 +801,23 @@ function updateUI() {
 
   // Toggles
   elements.toggleProtection.checked = config.enabled;
+
+  // Show/hide desktop app required message and update subtext
+  if (elements.desktopAppRequired && elements.protectionSubtext) {
+    if (!proxyRunning) {
+      elements.desktopAppRequired.style.display = 'block';
+      elements.protectionSubtext.textContent = 'Desktop app not detected';
+      elements.protectionSubtext.style.color = '#FF4757';
+    } else if (config.enabled) {
+      elements.desktopAppRequired.style.display = 'none';
+      elements.protectionSubtext.textContent = 'RPC traffic protected';
+      elements.protectionSubtext.style.color = '#5AF5F5';
+    } else {
+      elements.desktopAppRequired.style.display = 'none';
+      elements.protectionSubtext.textContent = 'Enable to route RPC through proxy';
+      elements.protectionSubtext.style.color = '#7D7D7D';
+    }
+  }
 
   // Tor status (read-only, from desktop app)
   if (elements.torDot && elements.torLabel) {
@@ -967,17 +1008,16 @@ function checkIfDapp(hostname) {
 
 // Check proxy status via background service worker
 async function checkProxyStatus() {
-  // Quick fix: If protection is enabled, always show as running
-  // This provides immediate UI feedback without waiting for health checks
-  if (config.enabled) {
-    proxyRunning = true;
-    return;
-  }
-
   try {
     const response = await chrome.runtime.sendMessage({ type: 'CHECK_PROXY' });
     const wasRunning = proxyRunning;
     proxyRunning = response && response.running;
+
+    // Auto-disable if proxy went offline
+    if (wasRunning && !proxyRunning && config.enabled) {
+      config.enabled = false;
+      await saveConfig();
+    }
 
     if (wasRunning !== proxyRunning) {
       updateUI();
@@ -2133,12 +2173,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'CONFIG_UPDATED':
-      // Desktop app config changed (mode/endpoint)
+      // Desktop app config changed (mode/endpoint/tor)
       if (message.data) {
         config.proxyMode = message.data.mode || 'proxy_only';
         config.rpcEndpoint = message.data.rpcEndpoint || null;
+        config.torEnabled = message.data.torEnabled || false;
+        config.torConnected = message.data.torConnected || false;
+        config.torIp = message.data.torIp || null;
         updateUI();
-        log(`Config updated: mode=${config.proxyMode}`);
       }
       break;
   }
@@ -2151,12 +2193,12 @@ let refreshInterval = null;
 document.addEventListener('DOMContentLoaded', () => {
   init();
 
-  // Refresh current tab info every 2 seconds while popup is open
+  // Refresh UI elements - check proxy status to stay in sync
   refreshInterval = setInterval(() => {
     getCurrentTab();
     updateZKStats();
     checkProxyStatus();
-  }, 2000);
+  }, 3000);
 });
 
 // Cleanup on unload
