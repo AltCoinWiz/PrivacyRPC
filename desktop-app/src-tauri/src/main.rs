@@ -8,6 +8,7 @@ mod native_messaging;
 mod proxy;
 mod tor;
 mod transaction_decoder;
+mod websocket;
 
 pub use transaction_decoder::{decode_transaction, DecodedTransaction};
 
@@ -19,7 +20,7 @@ use std::time::Instant;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, State,
+    AppHandle, Emitter, Manager, State,
 };
 
 // Application state
@@ -139,8 +140,18 @@ fn kill_old_instances(port: u16) -> Result<(), String> {
 
 // Tauri commands
 #[tauri::command]
-async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+async fn start_proxy(state: State<'_, Arc<AppState>>, app: AppHandle) -> Result<bool, String> {
     let port = *state.proxy_port.lock();
+
+    // Helper to emit proxy status
+    let emit_status = |running: bool, port: u16| {
+        let _ = app.emit("proxy-changed", serde_json::json!({
+            "running": running,
+            "port": port,
+        }));
+        // Broadcast to extension via WebSocket
+        websocket::broadcast_current_state();
+    };
 
     // First attempt to start
     match proxy::start_proxy_server(port).await {
@@ -148,6 +159,7 @@ async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
             *state.proxy_running.lock() = true;
             *state.started_at.lock() = Some(Instant::now());
             log::info!("Proxy server started on port {}", port);
+            emit_status(true, port);
             Ok(true)
         }
         Err(e) => {
@@ -175,6 +187,7 @@ async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
                             "Proxy server started on port {} (after killing old instance)",
                             port
                         );
+                        emit_status(true, port);
                         Ok(true)
                     }
                     Err(retry_err) => {
@@ -194,11 +207,20 @@ async fn start_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn stop_proxy(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+async fn stop_proxy(state: State<'_, Arc<AppState>>, app: AppHandle) -> Result<bool, String> {
     proxy::stop_proxy_server().await;
     *state.proxy_running.lock() = false;
     *state.started_at.lock() = None;
     log::info!("Proxy server stopped");
+
+    // Emit event to Tauri frontend
+    let _ = app.emit("proxy-changed", serde_json::json!({
+        "running": false,
+        "port": *state.proxy_port.lock(),
+    }));
+    // Broadcast to extension via WebSocket
+    websocket::broadcast_current_state();
+
     Ok(true)
 }
 
@@ -242,13 +264,21 @@ fn set_port(port: u16, state: State<'_, Arc<AppState>>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_rpc_endpoint(endpoint: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+fn set_rpc_endpoint(
+    endpoint: String,
+    state: State<'_, Arc<AppState>>,
+    app: AppHandle,
+) -> Result<(), String> {
     let endpoint = endpoint.trim().to_string();
     if endpoint.is_empty() {
         *state.rpc_endpoint.lock() = None;
         // Clear the global config
         proxy::set_rpc_endpoint(None);
         save_config_file(None);
+        // Emit event to Tauri frontend
+        let _ = app.emit("rpc-changed", serde_json::json!({ "rpcEndpoint": null }));
+        // Broadcast to extension via WebSocket
+        websocket::broadcast_current_state();
     } else {
         // Basic validation - should be a URL
         if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
@@ -259,6 +289,10 @@ fn set_rpc_endpoint(endpoint: String, state: State<'_, Arc<AppState>>) -> Result
         proxy::set_rpc_endpoint(Some(endpoint.clone()));
         save_config_file(Some(&endpoint));
         log::info!("RPC endpoint set to: {}", endpoint);
+        // Emit event to Tauri frontend
+        let _ = app.emit("rpc-changed", serde_json::json!({ "rpcEndpoint": endpoint }));
+        // Broadcast to extension via WebSocket
+        websocket::broadcast_current_state();
     }
     Ok(())
 }
@@ -299,12 +333,14 @@ fn get_rpc_endpoint(state: State<'_, Arc<AppState>>) -> Option<String> {
 }
 
 #[tauri::command]
-async fn enable_tor(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+async fn enable_tor(state: State<'_, Arc<AppState>>, app: AppHandle) -> Result<serde_json::Value, String> {
     log::info!("Starting Tor...");
-    *state.tor_enabled.lock() = true;
 
+    // Start Tor FIRST - only set state after successful start
     let status = tor::global_enable_tor().await?;
 
+    // Only update state after Tor successfully started
+    *state.tor_enabled.lock() = true;
     *state.tor_connected.lock() = status.is_bootstrapped;
 
     log::info!(
@@ -313,17 +349,24 @@ async fn enable_tor(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value
         status.exit_ip
     );
 
-    Ok(serde_json::json!({
+    let payload = serde_json::json!({
         "torEnabled": true,
         "torConnected": status.is_bootstrapped,
         "bootstrapProgress": status.bootstrap_progress,
         "exitIp": status.exit_ip,
         "socksPort": status.socks_port,
-    }))
+    });
+
+    // Emit event to Tauri frontend
+    let _ = app.emit("tor-changed", &payload);
+    // Broadcast to extension via WebSocket
+    websocket::broadcast_current_state();
+
+    Ok(payload)
 }
 
 #[tauri::command]
-async fn disable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+async fn disable_tor(state: State<'_, Arc<AppState>>, app: AppHandle) -> Result<bool, String> {
     log::info!("Stopping Tor...");
 
     tor::global_disable_tor().await?;
@@ -332,6 +375,15 @@ async fn disable_tor(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
     *state.tor_connected.lock() = false;
 
     log::info!("Tor stopped");
+
+    // Emit event to Tauri frontend
+    let _ = app.emit("tor-changed", serde_json::json!({
+        "torEnabled": false,
+        "torConnected": false,
+    }));
+    // Broadcast to extension via WebSocket
+    websocket::broadcast_current_state();
+
     Ok(true)
 }
 
@@ -410,6 +462,11 @@ fn main() {
                 tor::set_resource_dir(resource_dir);
             }
 
+            // Start WebSocket server for extension communication
+            tauri::async_runtime::spawn(async {
+                websocket::start_websocket_server().await;
+            });
+
             // Auto-start proxy if launched with --autostart flag
             if autostart {
                 let state = state_clone.clone();
@@ -421,6 +478,8 @@ fn main() {
                             *state.proxy_running.lock() = true;
                             *state.started_at.lock() = Some(Instant::now());
                             log::info!("Proxy auto-started on port {}", port);
+                            // Notify extension via WebSocket
+                            websocket::broadcast_current_state();
                         }
                         Err(e) => log::error!("Failed to auto-start proxy: {}", e),
                     }

@@ -15,7 +15,7 @@
 
   // Store original wallet methods
   const originalMethods = new Map();
-  let walletIntercepted = false;
+  const interceptedWalletObjects = new WeakSet();
 
   // Communication with content script via custom events
   function sendToContentScript(type, data) {
@@ -129,9 +129,11 @@
 
   // Intercept a wallet provider
   function interceptWallet(wallet, name) {
-    if (!wallet || walletIntercepted) return;
+    if (!wallet) return;
+    if (interceptedWalletObjects.has(wallet)) return; // Already intercepted this exact wallet object
 
     console.log(`[PrivacyRPC] Intercepting wallet: ${name}`);
+    interceptedWalletObjects.add(wallet);
 
     // Methods to intercept
     const methods = [
@@ -140,15 +142,19 @@
       'signAndSendTransaction'
     ];
 
+    let interceptedCount = 0;
     methods.forEach(method => {
       try {
-        interceptMethod(wallet, method);
+        if (wallet[method]) {
+          interceptMethod(wallet, method);
+          interceptedCount++;
+        }
       } catch (e) {
         console.log(`[PrivacyRPC] Could not intercept ${method}:`, e);
       }
     });
 
-    walletIntercepted = true;
+    console.log(`[PrivacyRPC] Intercepted ${interceptedCount} methods on ${name}`);
   }
 
   // Watch for wallet injection
@@ -164,46 +170,60 @@
       { prop: 'glow', subProp: 'solana', name: 'Glow' }
     ];
 
-    // Check immediately
-    walletChecks.forEach(({ prop, subProp, name }) => {
+    // Track which wallets we've already intercepted
+    const interceptedWallets = new Set();
+
+    function tryInterceptWallet(prop, subProp, name) {
       let wallet = window[prop];
       if (wallet && subProp) wallet = wallet[subProp];
-      if (wallet) interceptWallet(wallet, name);
+      if (wallet && !interceptedWallets.has(prop)) {
+        interceptedWallets.add(prop);
+        interceptWallet(wallet, name);
+      }
+    }
+
+    // Check immediately
+    walletChecks.forEach(({ prop, subProp, name }) => {
+      tryInterceptWallet(prop, subProp, name);
     });
 
-    // Watch for future injections using Proxy on window
-    const windowProxy = new Proxy(window, {
-      set(target, prop, value) {
-        target[prop] = value;
+    // Use defineProperty to trap wallet injection BEFORE it happens
+    walletChecks.forEach(({ prop, subProp, name }) => {
+      if (window[prop]) return; // Already exists
 
-        // Check if this is a wallet being injected
-        walletChecks.forEach(({ prop: watchProp, subProp, name }) => {
-          if (prop === watchProp) {
-            let wallet = value;
-            if (wallet && subProp) wallet = wallet[subProp];
-            if (wallet) {
-              setTimeout(() => interceptWallet(wallet, name), 100);
-            }
+      let _value = undefined;
+      try {
+        Object.defineProperty(window, prop, {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return _value;
+          },
+          set(newValue) {
+            console.log(`[PrivacyRPC] Detected ${prop} injection`);
+            _value = newValue;
+            // Wait a tick for wallet to fully initialize
+            setTimeout(() => tryInterceptWallet(prop, subProp, name), 0);
+            // Also check after a short delay in case methods are added async
+            setTimeout(() => tryInterceptWallet(prop, subProp, name), 100);
+            setTimeout(() => tryInterceptWallet(prop, subProp, name), 500);
           }
         });
-
-        return true;
+      } catch (e) {
+        // Property might already be defined, that's ok
       }
     });
 
-    // Also use defineProperty observer for wallets that use that
+    // Also override Object.defineProperty to catch wallets that use it
     const originalDefineProperty = Object.defineProperty;
     Object.defineProperty = function(obj, prop, descriptor) {
       const result = originalDefineProperty.call(this, obj, prop, descriptor);
 
       if (obj === window) {
         walletChecks.forEach(({ prop: watchProp, subProp, name }) => {
-          if (prop === watchProp && descriptor.value) {
-            let wallet = descriptor.value;
-            if (wallet && subProp) wallet = wallet[subProp];
-            if (wallet) {
-              setTimeout(() => interceptWallet(wallet, name), 100);
-            }
+          if (prop === watchProp) {
+            setTimeout(() => tryInterceptWallet(watchProp, subProp, name), 0);
+            setTimeout(() => tryInterceptWallet(watchProp, subProp, name), 100);
           }
         });
       }
@@ -211,20 +231,24 @@
       return result;
     };
 
-    // Periodic check as fallback
-    let checks = 0;
-    const interval = setInterval(() => {
-      checks++;
+    // Aggressive periodic check as fallback (every 200ms for first 5 seconds)
+    let fastChecks = 0;
+    const fastInterval = setInterval(() => {
+      fastChecks++;
       walletChecks.forEach(({ prop, subProp, name }) => {
-        let wallet = window[prop];
-        if (wallet && subProp) wallet = wallet[subProp];
-        if (wallet && !walletIntercepted) interceptWallet(wallet, name);
+        tryInterceptWallet(prop, subProp, name);
       });
+      if (fastChecks >= 25) clearInterval(fastInterval); // Stop after 5 seconds
+    }, 200);
 
-      // Stop after 30 seconds
-      if (checks > 30 || walletIntercepted) {
-        clearInterval(interval);
-      }
+    // Slower periodic check continues for 30 seconds
+    let slowChecks = 0;
+    const slowInterval = setInterval(() => {
+      slowChecks++;
+      walletChecks.forEach(({ prop, subProp, name }) => {
+        tryInterceptWallet(prop, subProp, name);
+      });
+      if (slowChecks > 30) clearInterval(slowInterval);
     }, 1000);
   }
 

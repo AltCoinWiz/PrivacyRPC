@@ -731,9 +731,10 @@ function updateUI() {
   // Only show protected if proxy is actually running
   const isFullyProtected = proxyRunning && (hasPrivateRpc || torActive);
 
-  // Header status lights (3 separate indicators)
+  // Header status lights (order: PROXY → TOR → RPC)
+  // All use teal color when active
 
-  // PROXY light (cyan) - on when desktop app proxy is running
+  // PROXY light - on when desktop app proxy is running
   if (elements.proxyDot) {
     if (proxyRunning) {
       elements.proxyDot.className = 'status-dot active';
@@ -742,23 +743,23 @@ function updateUI() {
     }
   }
 
-  // RPC light (purple) - on when private RPC is configured in desktop app
-  if (elements.rpcDot) {
-    if (proxyRunning && config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
-      elements.rpcDot.className = 'status-dot active-purple';
-    } else {
-      elements.rpcDot.className = 'status-dot';
-    }
-  }
-
-  // TOR light (orange) - on when Tor is connected
+  // TOR light - on when Tor is connected
   if (elements.torHeaderDot) {
     if (proxyRunning && config.torConnected) {
-      elements.torHeaderDot.className = 'status-dot active-orange';
+      elements.torHeaderDot.className = 'status-dot active';
     } else if (proxyRunning && config.torEnabled) {
       elements.torHeaderDot.className = 'status-dot warning'; // connecting
     } else {
       elements.torHeaderDot.className = 'status-dot';
+    }
+  }
+
+  // RPC light - on when private RPC is configured in desktop app
+  if (elements.rpcDot) {
+    if (proxyRunning && config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      elements.rpcDot.className = 'status-dot active';
+    } else {
+      elements.rpcDot.className = 'status-dot';
     }
   }
 
@@ -799,14 +800,22 @@ function updateUI() {
     elements.statusSubtitle.textContent = 'All RPC traffic is being routed thru public RPC';
   }
 
-  // Toggles
+  // Toggles - disable protection toggle when proxy isn't running
   elements.toggleProtection.checked = config.enabled;
+  elements.toggleProtection.disabled = !proxyRunning;
+
+  // Visual styling for disabled toggle
+  const toggleContainer = elements.toggleProtection.closest('.toggle-row');
+  if (toggleContainer) {
+    toggleContainer.style.opacity = proxyRunning ? '1' : '0.5';
+    toggleContainer.style.pointerEvents = proxyRunning ? 'auto' : 'none';
+  }
 
   // Show/hide desktop app required message and update subtext
   if (elements.desktopAppRequired && elements.protectionSubtext) {
     if (!proxyRunning) {
       elements.desktopAppRequired.style.display = 'block';
-      elements.protectionSubtext.textContent = 'Desktop app not detected';
+      elements.protectionSubtext.textContent = 'Proxy not detected';
       elements.protectionSubtext.style.color = '#FF4757';
     } else if (config.enabled) {
       elements.desktopAppRequired.style.display = 'none';
@@ -877,19 +886,20 @@ function updateUI() {
   }
 
   // Mode badge - shows PROXY or PRIVATE RPC based on desktop app config
+  // Only show when proxy is actually running
   if (elements.modeBadge && elements.modeIndicator) {
-    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+    if (!proxyRunning) {
+      elements.modeIndicator.style.display = 'none';
+    } else if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
       elements.modeBadge.textContent = 'PRIVATE RPC';
       elements.modeBadge.style.background = 'rgba(90, 245, 245, 0.2)';
       elements.modeBadge.style.color = '#5AF5F5';
       elements.modeIndicator.style.display = 'block';
-    } else if (proxyRunning) {
+    } else {
       elements.modeBadge.textContent = 'PROXY MODE';
       elements.modeBadge.style.background = 'rgba(255, 184, 0, 0.2)';
       elements.modeBadge.style.color = '#FFB800';
       elements.modeIndicator.style.display = 'block';
-    } else {
-      elements.modeIndicator.style.display = 'none';
     }
   }
 
@@ -2193,11 +2203,13 @@ let refreshInterval = null;
 document.addEventListener('DOMContentLoaded', () => {
   init();
 
-  // Refresh UI elements - check proxy status to stay in sync
-  refreshInterval = setInterval(() => {
+  // Refresh UI elements - check proxy and Tor status to stay in sync
+  refreshInterval = setInterval(async () => {
     getCurrentTab();
     updateZKStats();
-    checkProxyStatus();
+    await checkProxyStatus();
+    await fetchProxyConfig(); // Also refresh Tor status
+    updateUI();
   }, 3000);
 });
 

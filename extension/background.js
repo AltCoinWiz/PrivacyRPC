@@ -718,13 +718,14 @@ async function updateIcon() {
       ctx.fillRect(0, 0, size, size);
     }
 
-    // Draw status dots in bottom-right corner
+    // Draw status dots in bottom-right corner (order: PROXY → TOR → RPC)
+    // All dots use teal color (#5AF5F5) when active
     const dotSize = 20;
     const spacing = 22;
     const startX = size - 75;
     const startY = size - 22;
 
-    // Proxy dot (cyan) - first dot
+    // Proxy dot - first dot
     if (config.enabled) {
       ctx.beginPath();
       ctx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
@@ -732,25 +733,25 @@ async function updateIcon() {
       ctx.fill();
     }
 
-    // RPC dot (purple) - second dot
-    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
-      ctx.beginPath();
-      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#A855F7';
-      ctx.fill();
-    }
-
-    // Tor dot (orange) - third dot
+    // Tor dot - second dot
     if (config.torConnected) {
       ctx.beginPath();
-      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#F97316';
+      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#5AF5F5';
       ctx.fill();
     } else if (config.torEnabled) {
       // Connecting - yellow dot
       ctx.beginPath();
-      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
       ctx.fillStyle = '#FFB800';
+      ctx.fill();
+    }
+
+    // RPC dot - third dot
+    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+      ctx.beginPath();
+      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#5AF5F5';
       ctx.fill();
     }
 
@@ -823,10 +824,16 @@ async function checkProxyHealth() {
 // Fetch config from proxy server (mode, RPC endpoint, etc.)
 async function fetchProxyConfig() {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
     const response = await fetch(`http://${config.proxyHost}:${config.proxyPort}/config`, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' }
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
 
     if (response.ok) {
       const proxyConfig = await response.json();
@@ -856,7 +863,23 @@ async function fetchProxyConfig() {
       return proxyConfig;
     }
   } catch (e) {
-    // Silently fail - proxy might not be running
+    // Proxy not running - clear Tor status to avoid showing stale data
+    config.torEnabled = false;
+    config.torConnected = false;
+    config.torIp = null;
+    updateIcon();
+
+    // Notify popup that Tor is disconnected
+    chrome.runtime.sendMessage({
+      type: 'CONFIG_UPDATED',
+      data: {
+        mode: config.proxyMode,
+        rpcEndpoint: null,
+        torEnabled: false,
+        torConnected: false,
+        torIp: null
+      }
+    }).catch(() => {});
   }
   return null;
 }
@@ -1649,9 +1672,12 @@ function notifyPopupTabChange(tab) {
 
 initialize();
 
-// Periodic health check - every 2 minutes (WebSocket handles real-time updates)
-chrome.alarms.create('healthCheck', { periodInMinutes: 2 });
+// Periodic health check - every 30 seconds to keep Tor status synced
+chrome.alarms.create('healthCheck', { periodInMinutes: 0.5 });
+// Config sync alarm - more frequent for real-time Tor status updates
+chrome.alarms.create('configSync', { periodInMinutes: 0.25 }); // Every 15 seconds
 let lastProxyStatus = null;
+let lastTorStatus = null;
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'healthCheck' && config.enabled) {
@@ -1672,5 +1698,43 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
 
     lastProxyStatus = currentStatus;
+  }
+
+  // Config sync - poll for Tor status changes from desktop app
+  if (alarm.name === 'configSync') {
+    const previousTorConnected = config.torConnected;
+    const previousTorEnabled = config.torEnabled;
+
+    await fetchProxyConfig();
+
+    // Notify popup if Tor status changed
+    if (previousTorConnected !== config.torConnected || previousTorEnabled !== config.torEnabled) {
+      console.log(`[PrivacyRPC] Tor status changed: enabled=${config.torEnabled}, connected=${config.torConnected}`);
+
+      // Send status update to popup
+      chrome.runtime.sendMessage({
+        type: 'TOR_STATUS',
+        connected: config.torConnected,
+        ip: config.torIp,
+        torEnabled: config.torEnabled,
+        bootstrapProgress: config.torConnected ? 100 : 0,
+        rpcProvider: config.rpcEndpoint
+      }).catch(() => {}); // Ignore if popup not open
+
+      // Show notification for Tor status change
+      if (config.torConnected && !previousTorConnected) {
+        notificationHub.notify({
+          type: 'TOR_CONNECTED',
+          title: 'Tor Connected',
+          message: config.torIp ? `Exit IP: ${config.torIp}` : 'Your RPC traffic is now routed through Tor'
+        });
+      } else if (!config.torConnected && previousTorConnected) {
+        notificationHub.notify({
+          type: 'TOR_DISCONNECTED',
+          title: 'Tor Disconnected',
+          message: 'RPC traffic is no longer routed through Tor'
+        });
+      }
+    }
   }
 });

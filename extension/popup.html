@@ -1182,19 +1182,19 @@
             <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
           </svg>
         </button>
-<!-- Status Lights -->
+<!-- Status Lights: PROXY → TOR → RPC (correct routing order) -->
         <div style="display: flex; align-items: center; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 4px;" title="Proxy Status">
             <span class="status-dot" id="proxyDot"></span>
             <span style="font-size: 9px; color: #7D7D7D;">PROXY</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 4px;" title="Private RPC Status">
-            <span class="status-dot" id="rpcDot"></span>
-            <span style="font-size: 9px; color: #7D7D7D;">RPC</span>
-          </div>
           <div style="display: flex; align-items: center; gap: 4px;" title="Tor Routing Status">
             <span class="status-dot" id="torHeaderDot"></span>
             <span style="font-size: 9px; color: #7D7D7D;">TOR</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;" title="Private RPC Status">
+            <span class="status-dot" id="rpcDot"></span>
+            <span style="font-size: 9px; color: #7D7D7D;">RPC</span>
           </div>
         </div>
       </div>

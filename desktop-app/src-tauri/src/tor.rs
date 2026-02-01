@@ -13,6 +13,21 @@ static GLOBAL_TOR: Lazy<Arc<Mutex<Option<TorManager>>>> =
 static RESOURCE_DIR: Lazy<parking_lot::Mutex<Option<PathBuf>>> =
     Lazy::new(|| parking_lot::Mutex::new(None));
 
+// Sync-accessible Tor status cache (updated when status changes)
+static TOR_STATUS_CACHE: Lazy<parking_lot::Mutex<(bool, Option<String>)>> =
+    Lazy::new(|| parking_lot::Mutex::new((false, None)));
+
+/// Get Tor status synchronously (for proxy config endpoint)
+pub fn get_tor_status() -> (bool, Option<String>) {
+    TOR_STATUS_CACHE.lock().clone()
+}
+
+/// Update the cached Tor status (called internally when status changes)
+fn update_tor_status_cache(connected: bool, ip: Option<String>) {
+    let mut cache = TOR_STATUS_CACHE.lock();
+    *cache = (connected, ip);
+}
+
 /// Store the resource directory (call during Tauri setup)
 pub fn set_resource_dir(dir: PathBuf) {
     *RESOURCE_DIR.lock() = Some(dir);
@@ -28,6 +43,7 @@ pub async fn global_enable_tor() -> Result<TorStatus, String> {
         if status.is_running {
             // Make sure proxy routing is set
             crate::proxy::set_tor_routing(true, status.socks_port);
+            update_tor_status_cache(status.is_bootstrapped, status.exit_ip.clone());
             return Ok(status);
         }
     }
@@ -46,6 +62,9 @@ pub async fn global_enable_tor() -> Result<TorStatus, String> {
     // Configure proxy to route through Tor
     crate::proxy::set_tor_routing(true, socks_port);
 
+    // Update sync cache
+    update_tor_status_cache(status.is_bootstrapped, status.exit_ip.clone());
+
     *guard = Some(manager);
     Ok(status)
 }
@@ -60,6 +79,7 @@ pub async fn global_disable_tor() -> Result<(), String> {
     *guard = None;
 
     crate::proxy::set_tor_routing(false, 0);
+    update_tor_status_cache(false, None);
     Ok(())
 }
 
@@ -69,7 +89,10 @@ pub async fn global_new_circuit() -> Result<Option<String>, String> {
     let manager = guard
         .as_ref()
         .ok_or_else(|| "Tor is not running".to_string())?;
-    manager.new_circuit().await
+    let new_ip = manager.new_circuit().await?;
+    // Update cache with new IP
+    update_tor_status_cache(true, new_ip.clone());
+    Ok(new_ip)
 }
 
 /// Get global Tor status.
@@ -131,6 +154,13 @@ impl TorManager {
     pub async fn start(&mut self, resource_dir: &PathBuf) -> Result<(), String> {
         if *self.is_running.lock().await {
             return Ok(());
+        }
+
+        // Clean up stale Tor data directory to prevent "No, it's still there" errors
+        // This happens when Tor didn't shut down cleanly and left a lock file
+        if self.data_dir.exists() {
+            log::info!("Cleaning up stale Tor data directory...");
+            let _ = tokio::fs::remove_dir_all(&self.data_dir).await;
         }
 
         // Ensure data directory exists
