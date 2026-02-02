@@ -283,6 +283,20 @@ class NotificationHub {
 // Create notification hub instance
 const notificationHub = new NotificationHub();
 
+// Broadcast message to all tabs (for proxy status changes)
+async function broadcastToAllTabs(message) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id && !tab.url?.startsWith('chrome')) {
+        chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+      }
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+}
+
 // Connect to native messaging host
 function connectNativeHost() {
   if (nativePort) return nativePort;
@@ -668,35 +682,19 @@ function FindProxyForURL(url, host) {
 }
 
 // Apply proxy settings
+// NOTE: PAC proxy is DISABLED - we use fetch/XHR interception instead.
+// PAC causes issues:
+// 1. Routes WebSocket handshakes through proxy, breaking WebSockets
+// 2. HTTPS CONNECT tunnels go to original destination, not Helius
+// The injected.js handles RPC routing via fetch/XHR interception which works correctly.
 async function applyProxySettings() {
-  if (config.enabled) {
-    const pacScript = generatePacScript();
-
-    try {
-      await chrome.proxy.settings.set({
-        value: {
-          mode: 'pac_script',
-          pacScript: {
-            data: pacScript
-          }
-        },
-        scope: 'regular'
-      });
-
-      console.log('[PrivacyRPC] Proxy enabled with PAC script');
-      updateBadge(true);
-    } catch (error) {
-      console.error('[PrivacyRPC] Failed to set proxy:', error);
-      updateBadge(false, 'ERR');
-    }
-  } else {
-    try {
-      await chrome.proxy.settings.clear({ scope: 'regular' });
-      console.log('[PrivacyRPC] Proxy disabled');
-      updateBadge(false);
-    } catch (error) {
-      console.error('[PrivacyRPC] Failed to clear proxy:', error);
-    }
+  // Always clear PAC proxy - we rely on fetch/XHR interception now
+  try {
+    await chrome.proxy.settings.clear({ scope: 'regular' });
+    console.log('[PrivacyRPC] PAC proxy cleared (using fetch/XHR interception instead)');
+    updateBadge(config.enabled);
+  } catch (error) {
+    console.error('[PrivacyRPC] Failed to clear proxy:', error);
   }
 }
 
@@ -1412,6 +1410,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then(result => sendResponse(result))
         .catch(e => sendResponse({ success: false, error: e.message }));
       return true; // Keep channel open for async
+
+    case 'PROXY_RPC_REQUEST':
+      // Relay RPC request through our local proxy (bypasses page CSP)
+      (async () => {
+        const proxyUrl = `http://${config.proxyHost}:${config.proxyPort}`;
+        console.log('[PrivacyRPC-BG] === PROXY RPC REQUEST ===');
+        console.log('[PrivacyRPC-BG] Target:', message.targetUrl);
+        console.log('[PrivacyRPC-BG] Proxy:', proxyUrl);
+        console.log('[PrivacyRPC-BG] Body length:', message.body?.length || 0);
+
+        try {
+          const response = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Target-URL': message.targetUrl
+            },
+            body: typeof message.body === 'string' ? message.body : JSON.stringify(message.body)
+          });
+
+          console.log('[PrivacyRPC-BG] Proxy HTTP status:', response.status);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[PrivacyRPC-BG] Proxy error response:', errorText);
+            throw new Error(`Proxy returned ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json();
+          console.log('[PrivacyRPC-BG] SUCCESS - Got response data');
+          sendResponse({ success: true, data });
+        } catch (e) {
+          console.error('[PrivacyRPC-BG] FAILED:', e.message);
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
+      return true; // Keep channel open for async
   }
 });
 
@@ -1497,26 +1532,45 @@ function handleNotificationAction(notificationId, action) {
   }
 }
 
-// Listen for proxy errors
+// Listen for proxy errors - with aggressive suppression to prevent notification floods
+let lastProxyErrorTime = 0;
+let proxyErrorNotificationShown = false;
+
 chrome.proxy.onProxyError.addListener((details) => {
-  console.error('[PrivacyRPC] Proxy error:', details);
+  const now = Date.now();
+
+  // Only log once per 10 seconds to prevent console spam
+  if (now - lastProxyErrorTime > 10000) {
+    console.error('[PrivacyRPC] Proxy error:', details.error);
+    lastProxyErrorTime = now;
+  }
+
   config.stats.lastActivity = {
     type: 'error',
     message: details.error,
-    timestamp: Date.now()
+    timestamp: now
   };
-  saveConfig();
 
-  // Send notification for proxy error
-  notificationHub.notify({
-    type: 'PROXY_ERROR',
-    title: 'Proxy Connection Error',
-    message: details.error || 'Failed to connect to the proxy server',
-    actions: [
-      { label: 'Open Settings', action: 'open_settings' },
-      { label: 'Dismiss', action: 'dismiss' }
-    ]
-  });
+  // Only show ONE notification until proxy is back online
+  // Reset flag when proxy health check succeeds
+  if (!proxyErrorNotificationShown) {
+    proxyErrorNotificationShown = true;
+
+    notificationHub.notify({
+      type: 'PROXY_ERROR',
+      title: 'Proxy Connection Error',
+      message: 'Desktop app not running. RPC routing disabled until reconnected.',
+      actions: [
+        { label: 'Open Settings', action: 'open_settings' },
+        { label: 'Dismiss', action: 'dismiss' }
+      ]
+    });
+
+    // Auto-disable PAC proxy to stop the error flood
+    chrome.proxy.settings.clear({ scope: 'regular' }).then(() => {
+      console.log('[PrivacyRPC] PAC proxy cleared due to connection error');
+    }).catch(() => {});
+  }
 });
 
 // Check if URL is a Solana RPC endpoint
@@ -1947,7 +2001,18 @@ async function initialize() {
   }
 
   await loadConfig();
+
+  // Clear any existing PAC proxy (we use fetch/XHR interception now)
   await applyProxySettings();
+
+  // Check proxy health on startup
+  if (config.enabled) {
+    const health = await checkProxyHealth();
+    lastProxyStatus = health.running;
+    if (!health.running) {
+      console.log('[PrivacyRPC] Proxy not running on startup');
+    }
+  }
 
   // Fetch proxy config to get current state from desktop app
   await fetchProxyConfig();
@@ -2013,6 +2078,20 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'healthCheck' && config.enabled) {
     const health = await checkProxyHealth();
     const currentStatus = health.running;
+
+    // Proxy came back online - reset error state and notify tabs
+    if (currentStatus === true && lastProxyStatus === false) {
+      proxyErrorNotificationShown = false; // Reset flood prevention flag
+      console.log('[PrivacyRPC] Proxy back online');
+
+      // Notify all tabs to re-enable RPC routing (fetch/XHR interception)
+      broadcastToAllTabs({ type: 'CONFIG_UPDATED', data: { proxyRunning: true } });
+    }
+
+    // Proxy went offline - notify tabs to disable RPC routing
+    if (currentStatus === false && lastProxyStatus === true) {
+      broadcastToAllTabs({ type: 'CONFIG_UPDATED', data: { proxyRunning: false } });
+    }
 
     // Only notify if status changed from running to not running
     if (lastProxyStatus === true && currentStatus === false) {

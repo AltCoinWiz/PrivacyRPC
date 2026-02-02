@@ -1,7 +1,8 @@
 /**
  * PrivacyRPC Injected Script
- * Runs in PAGE context to intercept wallet adapter calls
+ * Runs in PAGE context to intercept wallet adapter calls and RPC requests
  * Intercepts signTransaction BEFORE it reaches Phantom
+ * Intercepts fetch/XHR to route RPC calls through the proxy
  */
 
 (function() {
@@ -11,7 +12,247 @@
   if (window.__privacyRpcInjected) return;
   window.__privacyRpcInjected = true;
 
-  console.log('[PrivacyRPC] Wallet interceptor injected');
+  console.log('[PrivacyRPC] Injected script loaded');
+
+  // ============================================================================
+  // RPC ROUTING - Intercept fetch/XHR to route through proxy
+  // ============================================================================
+
+  const PROXY_URL = 'http://127.0.0.1:8899';
+
+  // RPC endpoint patterns to intercept
+  const RPC_PATTERNS = [
+    /solana/i,
+    /helius/i,
+    /alchemy/i,
+    /quicknode/i,
+    /quiknode/i,
+    /triton/i,
+    /syndica/i,
+    /ankr\.com/i,
+    /getblock/i,
+    /chainstack/i,
+    /blockdaemon/i,
+    /genesysgo/i,
+    /jito/i,
+    /astralane/i,
+    /shyft/i,
+    /extrnode/i,
+    /rpcpool/i,
+    /mainnet/i,
+    /devnet/i,
+    /testnet/i,
+  ];
+
+  // Check if URL is an RPC endpoint
+  function isRpcUrl(url) {
+    try {
+      const parsed = new URL(url);
+      // Skip localhost (that's our proxy)
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+        return false;
+      }
+      // Check against patterns
+      return RPC_PATTERNS.some(pattern => pattern.test(parsed.hostname));
+    } catch {
+      return false;
+    }
+  }
+
+  // Check if request body looks like JSON-RPC
+  function isJsonRpcBody(body) {
+    if (!body) return false;
+    try {
+      const str = typeof body === 'string' ? body : new TextDecoder().decode(body);
+      return str.includes('jsonrpc') || str.includes('"method"');
+    } catch {
+      return false;
+    }
+  }
+
+  // Store original fetch
+  const originalFetch = window.fetch;
+
+  // Intercepted fetch
+  window.fetch = async function(input, init = {}) {
+    // Get URL string
+    let url = typeof input === 'string' ? input : input.url;
+
+    // Check if proxy is enabled (set by content script)
+    const proxyEnabled = window.__privacyRpcProxyEnabled === true;
+
+    // Only intercept if: proxy enabled + RPC URL + POST method + JSON-RPC body
+    if (proxyEnabled && isRpcUrl(url)) {
+      const method = init.method || (input.method) || 'GET';
+
+      if (method.toUpperCase() === 'POST') {
+        // Get body
+        let body = init.body;
+        if (input instanceof Request && !body) {
+          body = await input.clone().text();
+        }
+
+        // Check if it's JSON-RPC
+        if (isJsonRpcBody(body)) {
+          console.log('[PrivacyRPC] Routing RPC call through proxy:', url);
+
+          // Route through content script -> background script (bypasses page CSP)
+          try {
+            const proxyResult = await sendRpcThroughExtension(url, body);
+            console.log('[PrivacyRPC] Proxy result:', JSON.stringify(proxyResult).substring(0, 200));
+            if (proxyResult && proxyResult.success) {
+              // Create a fake Response object with the proxy data
+              return new Response(JSON.stringify(proxyResult.data), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            // If proxy failed, fall through to original fetch
+            console.warn('[PrivacyRPC] Proxy request failed, falling back to direct. Result:', proxyResult);
+          } catch (e) {
+            console.warn('[PrivacyRPC] Proxy request failed, falling back to direct:', e.message);
+            // Fall through to original fetch
+          }
+        }
+      }
+    }
+
+    // Use original fetch for everything else
+    return originalFetch.call(window, input, init);
+  };
+
+  // Store original XMLHttpRequest
+  const OriginalXHR = window.XMLHttpRequest;
+
+  // Intercepted XMLHttpRequest - routes RPC calls through extension relay (bypasses CSP)
+  window.XMLHttpRequest = function() {
+    const xhr = new OriginalXHR();
+    let targetUrl = null;
+    let requestMethod = null;
+    let isRpc = false;
+
+    // Store original open
+    const originalOpen = xhr.open.bind(xhr);
+    xhr.open = function(method, url, ...args) {
+      targetUrl = url;
+      requestMethod = method;
+      const proxyEnabled = window.__privacyRpcProxyEnabled === true;
+      isRpc = proxyEnabled && method.toUpperCase() === 'POST' && isRpcUrl(url);
+
+      if (isRpc) {
+        console.log('[PrivacyRPC] Will route XHR RPC through extension relay:', url);
+      }
+
+      // Always open with original URL - we'll intercept at send() if needed
+      return originalOpen.call(this, method, url, ...args);
+    };
+
+    // Store original send
+    const originalSend = xhr.send.bind(xhr);
+    xhr.send = function(body) {
+      if (isRpc && targetUrl && isJsonRpcBody(body)) {
+        console.log('[PrivacyRPC] Routing XHR through extension relay');
+
+        // Route through extension relay instead of direct XHR (bypasses CSP)
+        sendRpcThroughExtension(targetUrl, body)
+          .then(result => {
+            if (result && result.success) {
+              // Simulate successful XHR response
+              const responseText = JSON.stringify(result.data);
+              Object.defineProperty(xhr, 'readyState', { value: 4, writable: false });
+              Object.defineProperty(xhr, 'status', { value: 200, writable: false });
+              Object.defineProperty(xhr, 'statusText', { value: 'OK', writable: false });
+              Object.defineProperty(xhr, 'responseText', { value: responseText, writable: false });
+              Object.defineProperty(xhr, 'response', { value: responseText, writable: false });
+
+              // Fire events
+              if (xhr.onreadystatechange) xhr.onreadystatechange();
+              if (xhr.onload) xhr.onload();
+              xhr.dispatchEvent(new Event('load'));
+              xhr.dispatchEvent(new Event('loadend'));
+            } else {
+              // Proxy failed, fall back to original request
+              console.warn('[PrivacyRPC] XHR relay failed, falling back to direct:', result?.error);
+              return originalSend.call(this, body);
+            }
+          })
+          .catch(err => {
+            console.warn('[PrivacyRPC] XHR relay error, falling back to direct:', err.message);
+            return originalSend.call(this, body);
+          });
+
+        return; // Don't call original send - we're handling it via relay
+      }
+
+      return originalSend.call(this, body);
+    };
+
+    return xhr;
+  };
+
+  // Copy static properties
+  window.XMLHttpRequest.UNSENT = OriginalXHR.UNSENT;
+  window.XMLHttpRequest.OPENED = OriginalXHR.OPENED;
+  window.XMLHttpRequest.HEADERS_RECEIVED = OriginalXHR.HEADERS_RECEIVED;
+  window.XMLHttpRequest.LOADING = OriginalXHR.LOADING;
+  window.XMLHttpRequest.DONE = OriginalXHR.DONE;
+
+  // Listen for proxy status updates from content script
+  window.addEventListener('privacyrpc-proxy-status', (event) => {
+    const enabled = event.detail?.enabled === true;
+    window.__privacyRpcProxyEnabled = enabled;
+    console.log('[PrivacyRPC] Proxy status updated:', enabled ? 'ENABLED' : 'DISABLED');
+  });
+
+  // Default to false until we hear from content script
+  window.__privacyRpcProxyEnabled = false;
+
+  console.log('[PrivacyRPC] Fetch/XHR interception ready');
+
+  // Signal to content script that we're ready to receive proxy status
+  window.dispatchEvent(new CustomEvent('privacyrpc-injected-ready'));
+
+  // ============================================================================
+  // RPC PROXY VIA EXTENSION - Routes RPC calls through background script
+  // This bypasses page CSP which blocks connections to localhost
+  // ============================================================================
+
+  // Send RPC request through extension (background script makes the actual fetch)
+  function sendRpcThroughExtension(targetUrl, body) {
+    return new Promise((resolve, reject) => {
+      const messageId = `privacyrpc-rpc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      const handler = (event) => {
+        if (event.detail && event.detail.messageId === messageId) {
+          window.removeEventListener('privacyrpc-rpc-response', handler);
+          if (event.detail.error) {
+            reject(new Error(event.detail.error));
+          } else {
+            resolve(event.detail.result);
+          }
+        }
+      };
+
+      window.addEventListener('privacyrpc-rpc-response', handler);
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        window.removeEventListener('privacyrpc-rpc-response', handler);
+        reject(new Error('RPC proxy timeout'));
+      }, 30000);
+
+      // Send request to content script
+      window.dispatchEvent(new CustomEvent('privacyrpc-rpc-request', {
+        detail: { targetUrl, body, messageId }
+      }));
+    });
+  }
+
+  // ============================================================================
+  // WALLET INTERCEPTION - Original code below
+  // ============================================================================
+
+  console.log('[PrivacyRPC] Wallet interceptor ready');
 
   // Store original wallet methods
   const originalMethods = new Map();
@@ -264,5 +505,62 @@
       href: window.location.href
     });
   };
+
+  // ============================================================================
+  // DEBUG FUNCTIONS - Run these in console to trace RPC routing
+  // ============================================================================
+
+  // Test the full RPC routing flow
+  window.__privacyRpcDebug = {
+    // Check current status
+    status: function() {
+      console.log('=== PrivacyRPC Debug Status ===');
+      console.log('Proxy enabled:', window.__privacyRpcProxyEnabled);
+      console.log('Injected script loaded:', window.__privacyRpcInjected);
+      return {
+        proxyEnabled: window.__privacyRpcProxyEnabled,
+        injectedLoaded: window.__privacyRpcInjected
+      };
+    },
+
+    // Test if a URL would be detected as RPC
+    testUrl: function(url) {
+      const result = isRpcUrl(url);
+      console.log(`URL "${url}" is RPC:`, result);
+      return result;
+    },
+
+    // Test the extension relay (sends test message through content script -> background)
+    testRelay: async function() {
+      console.log('=== Testing Extension Relay ===');
+      console.log('1. Sending test request to content script...');
+
+      try {
+        const testUrl = 'https://mainnet.helius-rpc.com/test';
+        const testBody = JSON.stringify({ jsonrpc: '2.0', method: 'getHealth', params: [], id: 1 });
+
+        const result = await sendRpcThroughExtension(testUrl, testBody);
+        console.log('2. Got response:', result);
+        return result;
+      } catch (e) {
+        console.error('2. Relay FAILED:', e.message);
+        return { error: e.message };
+      }
+    },
+
+    // Manual enable (in case content script didn't set it)
+    enable: function() {
+      window.__privacyRpcProxyEnabled = true;
+      console.log('Proxy routing manually enabled');
+    },
+
+    // Manual disable
+    disable: function() {
+      window.__privacyRpcProxyEnabled = false;
+      console.log('Proxy routing disabled');
+    }
+  };
+
+  console.log('[PrivacyRPC] Debug functions available: window.__privacyRpcDebug.status() / testUrl() / testRelay() / enable() / disable()');
 
 })();

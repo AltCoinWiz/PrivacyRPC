@@ -316,16 +316,7 @@ async fn handle_connection(
         }
     }
 
-    // Determine target URL: X-Target-URL header > custom RPC endpoint > default
-    let target_url = if let Some(ref header_url) = target_url_header {
-        header_url.clone()
-    } else {
-        let config = PROXY_CONFIG.lock();
-        config
-            .rpc_endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".to_string())
-    };
+    // Note: target_url logic moved to final_target below for clarity
 
     // Handle control endpoints
     if request_line.starts_with("POST /control/") || request_line.starts_with("GET /status") {
@@ -452,14 +443,45 @@ async fn handle_connection(
         }
     }
 
-    // Check if user has configured a private RPC endpoint - if so, route there
-    let final_target = if let Some(private_endpoint) = get_rpc_endpoint() {
-        // User has a private RPC configured - route all Solana RPC traffic there
-        log::info!("Routing RPC request to private endpoint: {}", private_endpoint);
-        private_endpoint
+    // Check if this is a Jito-specific RPC method
+    // Jito methods must go to Jito's endpoint - they're not supported by standard RPCs like Helius
+    const JITO_METHODS: &[&str] = &[
+        "getTipAccounts",
+        "sendBundle",
+        "getBundleStatuses",
+        "simulateBundle",
+        "getInflightBundleStatuses",
+    ];
+    // Jito's JSON-RPC endpoint for all MEV/bundle operations
+    const JITO_MAINNET_URL: &str = "https://mainnet.block-engine.jito.wtf/api/v1/bundles";
+
+    // Extract method from JSON-RPC body
+    let rpc_method = if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&body) {
+        json.get("method").and_then(|m| m.as_str()).map(|s| s.to_string())
     } else {
-        // No private endpoint - use original target (default or from header)
-        target_url
+        None
+    };
+
+    let is_jito_method = rpc_method.as_ref()
+        .map(|m| JITO_METHODS.iter().any(|jm| m == *jm))
+        .unwrap_or(false);
+
+    // Smart routing: Jito methods -> Jito block engine, everything else -> private RPC
+    let final_target = if is_jito_method {
+        log::info!("Routing Jito method '{}' to Jito block engine", rpc_method.as_deref().unwrap_or("unknown"));
+        JITO_MAINNET_URL.to_string()
+    } else if let Some(private_endpoint) = get_rpc_endpoint() {
+        // Standard RPC methods go to user's private endpoint
+        log::info!("Routing '{}' to private endpoint", rpc_method.as_deref().unwrap_or("unknown"));
+        private_endpoint
+    } else if let Some(ref header_url) = target_url_header {
+        // No private endpoint, use the original target from extension
+        log::info!("Forwarding to X-Target-URL: {}", header_url);
+        header_url.clone()
+    } else {
+        // Fall back to default Solana RPC
+        log::info!("Routing to default Solana RPC");
+        "https://api.mainnet-beta.solana.com".to_string()
     };
 
     // Build HTTP client — with or without Tor SOCKS5 proxy
@@ -492,6 +514,10 @@ async fn handle_connection(
         Ok(resp) => {
             let status = resp.status();
             let response_body = resp.bytes().await.unwrap_or_default();
+
+            log::info!("=== PROXY RESPONSE ===");
+            log::info!("Upstream status: {}", status);
+            log::info!("Response body (first 300 chars): {}", String::from_utf8_lossy(&response_body[..std::cmp::min(300, response_body.len())]));
 
             // Update stats
             REQUESTS_PROXIED.fetch_add(1, Ordering::Relaxed);

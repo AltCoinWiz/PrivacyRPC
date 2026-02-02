@@ -28,6 +28,60 @@
   // Inject early
   injectScript();
 
+  // ============================================================================
+  // PROXY STATUS COMMUNICATION
+  // Use custom events to tell injected script about proxy status (CSP-safe)
+  // ============================================================================
+
+  // Set proxy enabled flag via custom event (works with strict CSP)
+  function setProxyEnabled(enabled) {
+    // Dispatch custom event that injected script listens for
+    window.dispatchEvent(new CustomEvent('privacyrpc-proxy-status', {
+      detail: { enabled: enabled }
+    }));
+    console.log('[PrivacyRPC] Proxy routing:', enabled ? 'ENABLED' : 'DISABLED');
+  }
+
+  // Track current proxy status to re-send when injected script signals ready
+  let currentProxyEnabled = false;
+
+  // Listen for injected script ready signal
+  window.addEventListener('privacyrpc-injected-ready', () => {
+    console.log('[PrivacyRPC] Injected script ready, sending proxy status');
+    setProxyEnabled(currentProxyEnabled);
+  });
+
+  // Modified checkProxyStatus to store the result
+  async function updateProxyStatus() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+      if (!response || !response.enabled) {
+        currentProxyEnabled = false;
+        setProxyEnabled(false);
+        return;
+      }
+      const proxyCheck = await chrome.runtime.sendMessage({ type: 'CHECK_PROXY' });
+      currentProxyEnabled = proxyCheck && proxyCheck.running;
+      setProxyEnabled(currentProxyEnabled);
+    } catch (e) {
+      console.log('[PrivacyRPC] Could not check proxy status:', e);
+      currentProxyEnabled = false;
+      setProxyEnabled(false);
+    }
+  }
+
+  // Check status immediately
+  updateProxyStatus();
+
+  // Listen for config changes from background
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'CONFIG_UPDATED') {
+      // Re-check proxy status when config changes
+      updateProxyStatus();
+    }
+    // ... rest of handlers below
+  });
+
   // Notification container
   let container = null;
   const notifications = new Map();
@@ -574,6 +628,46 @@
       createTxOverlay();
       txOverlay.classList.add('privacyrpc-tx-visible');
       showTxOverlay(event.detail.decoded);
+    }
+  });
+
+  // ============================================================================
+  // RPC PROXY RELAY - Forward RPC requests from injected script to background
+  // This bypasses page CSP by routing through the extension
+  // ============================================================================
+
+  window.addEventListener('privacyrpc-rpc-request', async (event) => {
+    const { targetUrl, body, messageId } = event.detail || {};
+
+    console.log('[PrivacyRPC-CS] Received RPC request from page:', { targetUrl, messageId, bodyLength: body?.length });
+
+    if (!targetUrl || !body || !messageId) {
+      console.warn('[PrivacyRPC-CS] Invalid RPC request - missing fields');
+      return;
+    }
+
+    try {
+      console.log('[PrivacyRPC-CS] Sending to background script...');
+
+      // Send to background script which will make the actual fetch
+      const result = await chrome.runtime.sendMessage({
+        type: 'PROXY_RPC_REQUEST',
+        targetUrl: targetUrl,
+        body: body
+      });
+
+      console.log('[PrivacyRPC-CS] Background response:', result?.success ? 'SUCCESS' : 'FAILED', result?.error || '');
+
+      // Send response back to injected script
+      window.dispatchEvent(new CustomEvent('privacyrpc-rpc-response', {
+        detail: { messageId, result }
+      }));
+      console.log('[PrivacyRPC-CS] Response sent back to page');
+    } catch (e) {
+      console.error('[PrivacyRPC-CS] RPC relay error:', e);
+      window.dispatchEvent(new CustomEvent('privacyrpc-rpc-response', {
+        detail: { messageId, error: e.message }
+      }));
     }
   });
 
