@@ -651,7 +651,7 @@
 
     .site-info p {
       font-size: 10px;
-      color: #7D7D7D;
+      color: #00D4AA;
     }
 
     .site-status {
@@ -1469,7 +1469,10 @@
         <div id="scanResults"></div>
 
         <div class="card">
-          <div class="card-title" style="margin-bottom: 12px;">Recent Scans</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div class="card-title" style="margin-bottom: 0;">Recent Scans</div>
+            <button class="btn btn-small" id="clearScansBtn" style="font-size: 10px; padding: 4px 8px;">Clear</button>
+          </div>
           <div class="alerts-list" id="recentScans">
             <div class="no-alerts">No recent scans</div>
           </div>
@@ -1625,6 +1628,17 @@
           <div class="card" style="padding: 12px;">
             <div id="trustedSitesList" style="max-height: 150px; overflow-y: auto;">
               <div class="no-alerts" id="noTrustedSites">No trusted sites</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blocked Sites -->
+        <div class="settings-section">
+          <h4>Blocked Sites</h4>
+          <p style="font-size: 11px; color: #7D7D7D; margin-bottom: 8px;">Sites where all transactions are blocked</p>
+          <div class="card" style="padding: 12px;">
+            <div id="blockedSitesList" style="max-height: 150px; overflow-y: auto;">
+              <div class="no-alerts" id="noBlockedSites">No blocked sites</div>
             </div>
           </div>
         </div>

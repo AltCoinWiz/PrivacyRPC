@@ -625,7 +625,7 @@
 
     .site-info p {
       font-size: 10px;
-      color: #7D7D7D;
+      color: #00D4AA;
     }
 
     .site-status {
@@ -1129,9 +1129,20 @@
         <img src="icons/icon48.png" class="logo-img" alt="PrivacyRPC">
         <span class="logo-text">PrivacyRPC</span>
       </div>
-      <div class="header-status">
-        <span class="status-dot" id="headerDot"></span>
-        <span id="headerStatus">Inactive</span>
+      <!-- Status Lights: PROXY → TOR → RPC (correct routing order) -->
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 4px;" title="Proxy Status">
+          <span class="status-dot" id="proxyDot"></span>
+          <span style="font-size: 9px; color: #7D7D7D;">PROXY</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px;" title="Tor Routing Status">
+          <span class="status-dot" id="torHeaderDot"></span>
+          <span style="font-size: 9px; color: #7D7D7D;">TOR</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px;" title="Private RPC Status">
+          <span class="status-dot" id="rpcDot"></span>
+          <span style="font-size: 9px; color: #7D7D7D;">RPC</span>
+        </div>
       </div>
     </div>
 

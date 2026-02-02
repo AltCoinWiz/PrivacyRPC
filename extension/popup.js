@@ -125,6 +125,7 @@ function initElements() {
     scanBtn: document.getElementById('scanBtn'),
     scanResults: document.getElementById('scanResults'),
     recentScans: document.getElementById('recentScans'),
+    clearScansBtn: document.getElementById('clearScansBtn'),
 
     // Settings
     proxyHost: document.getElementById('proxyHost'),
@@ -158,7 +159,11 @@ function initElements() {
 
     // Trusted sites
     trustedSitesList: document.getElementById('trustedSitesList'),
-    noTrustedSites: document.getElementById('noTrustedSites')
+    noTrustedSites: document.getElementById('noTrustedSites'),
+
+    // Blocked sites
+    blockedSitesList: document.getElementById('blockedSitesList'),
+    noBlockedSites: document.getElementById('noBlockedSites')
   };
 }
 
@@ -180,6 +185,7 @@ async function init() {
   getInstalledExtensions();
   getBackgroundActivity();
   loadTrustedSites();
+  loadBlockedSites();
 }
 
 // Fetch proxy config from desktop app
@@ -259,6 +265,58 @@ async function untrustSite(hostname) {
     }
   } catch (e) {
     log('Failed to untrust site: ' + e.message);
+  }
+}
+
+// Load and render blocked sites
+async function loadBlockedSites() {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'GET_BLOCKED_SITES' });
+    renderBlockedSites(result.blockedSites || []);
+  } catch (e) {
+    log('Failed to load blocked sites: ' + e.message);
+  }
+}
+
+// Render blocked sites list
+function renderBlockedSites(sites) {
+  if (!elements.blockedSitesList) return;
+
+  if (sites.length === 0) {
+    elements.blockedSitesList.innerHTML = '<div class="no-alerts" id="noBlockedSites">No blocked sites</div>';
+    return;
+  }
+
+  elements.blockedSitesList.innerHTML = sites.map(site => `
+    <div class="trusted-site-item">
+      <span class="site-name">${escapeHtml(site)}</span>
+      <button class="remove-btn" data-site="${escapeHtml(site)}" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+
+  // Add event listeners for remove buttons
+  elements.blockedSitesList.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const site = btn.getAttribute('data-site');
+      await unblockSite(site);
+    });
+  });
+}
+
+// Unblock a site
+async function unblockSite(hostname) {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'UNBLOCK_SITE', hostname });
+    if (result.success) {
+      renderBlockedSites(result.blockedSites || []);
+      log('Site unblocked: ' + hostname);
+    }
+  } catch (e) {
+    log('Failed to unblock site: ' + e.message);
   }
 }
 
@@ -591,6 +649,16 @@ function setupEventListeners() {
           scanWebsite(url);
         }
       }
+    });
+  }
+
+  // Clear scans button
+  if (elements.clearScansBtn) {
+    elements.clearScansBtn.addEventListener('click', () => {
+      config.recentScans = [];
+      saveConfig();
+      renderRecentScans();
+      log('Scan history cleared');
     });
   }
 
@@ -1080,9 +1148,11 @@ function updateSiteDisplay(tabInfo) {
 // Check if site is a known dApp
 function checkIfDapp(hostname) {
   const dapps = [
-    // DEXs
+    // DEXs / Trading
     'jup.ag', 'jupiter.ag', 'raydium.io', 'orca.so', 'lifinity.io',
     'meteora.ag', 'phoenix.trade', 'drift.trade', 'zeta.markets',
+    'axiom.trade', 'photon-sol.tinyastro.io', 'birdeye.so', 'dexscreener.com',
+    'pump.fun', 'bullx.io', 'defined.fi', 'gecko.terminal',
     // Lending/DeFi
     'marinade.finance', 'solend.fi', 'mango.markets', 'kamino.finance',
     'marginfi.com', 'solblaze.org', 'jito.network',
@@ -1201,7 +1271,49 @@ async function scanWebsite(url) {
     const hostname = new URL(url).hostname;
     const isDapp = checkIfDapp(hostname);
 
-    // Check for existing RPC activity from this site
+    // Analyze based on URL patterns (can't fetch due to CORS in extension)
+    let pageAnalysis = { hasWalletCode: false, hasRpcCode: false, suspiciousPatterns: [] };
+
+    // Check for suspicious URL patterns
+    const lowerHostname = hostname.toLowerCase();
+    if (/claim|airdrop|free-?mint|giveaway/i.test(lowerHostname)) {
+      pageAnalysis.suspiciousPatterns.push('Suspicious URL pattern detected');
+    }
+    // Check for typosquats of known dApps
+    const knownDapps = ['phantom', 'solflare', 'jupiter', 'raydium', 'orca', 'marinade', 'jito'];
+    for (const dapp of knownDapps) {
+      if (lowerHostname.includes(dapp) && !isDapp) {
+        pageAnalysis.suspiciousPatterns.push(`Possible typosquat of ${dapp}`);
+        break;
+      }
+    }
+
+    log(`Analyzing ${hostname}...`);
+
+    // Get RPC activity from tabs matching this hostname
+    let rpcCallCount = 0;
+    let rpcEndpointsList = [];
+    try {
+      const tabs = await chrome.tabs.query({});
+      const matchingTabs = tabs.filter(t => t.url && new URL(t.url).hostname.includes(hostname));
+
+      if (matchingTabs.length > 0) {
+        const tabActivityResult = await chrome.runtime.sendMessage({ type: 'GET_ALL_TAB_ACTIVITY' });
+        if (tabActivityResult && tabActivityResult.activity) {
+          for (const tab of matchingTabs) {
+            const tabAct = tabActivityResult.activity.find(a => a.tabId === tab.id);
+            if (tabAct) {
+              rpcCallCount += tabAct.rpcCalls || 0;
+              if (tabAct.lastEndpoint) rpcEndpointsList.push(tabAct.lastEndpoint);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log('Could not get tab activity: ' + e.message);
+    }
+
+    // Also check activity history
     const siteActivity = config.activity.filter(a => {
       try {
         return a.url && (a.url.includes(hostname) || hostname.includes(a.url.split('/')[0]));
@@ -1209,9 +1321,10 @@ async function scanWebsite(url) {
         return false;
       }
     });
+    rpcCallCount += siteActivity.length;
 
     // Get unique RPC endpoints used
-    const rpcEndpoints = [...new Set(siteActivity.map(a => a.url).filter(Boolean))];
+    const rpcEndpoints = [...new Set([...rpcEndpointsList, ...siteActivity.map(a => a.url)].filter(Boolean))];
 
     // Determine if using public RPC based on endpoints
     const publicRpcPatterns = ['api.mainnet-beta.solana.com', 'api.devnet.solana.com', 'rpc.ankr.com'];
@@ -1223,21 +1336,26 @@ async function scanWebsite(url) {
       url: hostname,
       fullUrl: url,
       timestamp: Date.now(),
-      safe: isDapp,
-      rpcCalls: siteActivity.length || (isDapp ? Math.floor(Math.random() * 10) + 1 : 0),
-      rpcEndpoints: rpcEndpoints.length > 0 ? rpcEndpoints : (isDapp ? ['helius-rpc.com', 'mainnet.helius-rpc.com'] : []),
+      safe: isDapp && pageAnalysis.suspiciousPatterns.length === 0,
+      rpcCalls: siteActivity.length,
+      rpcEndpoints: rpcEndpoints,
       usesPublicRpc,
+      hasWalletCode: pageAnalysis.hasWalletCode,
+      hasRpcCode: pageAnalysis.hasRpcCode,
       issues: []
     };
 
+    // Add detected issues
+    if (pageAnalysis.suspiciousPatterns.length > 0) {
+      result.issues.push(...pageAnalysis.suspiciousPatterns);
+    }
     if (usesPublicRpc) {
       result.issues.push('Uses public Solana RPC - IP exposed to providers');
     }
-    if (!isDapp) {
+    if (!isDapp && pageAnalysis.hasWalletCode) {
+      result.issues.push('Unknown dApp with wallet integration - exercise caution');
+    } else if (!isDapp) {
       result.issues.push('Unknown dApp - exercise caution');
-    }
-    if (result.rpcCalls > 10) {
-      result.issues.push('High RPC call frequency detected');
     }
 
     // Add to recent scans

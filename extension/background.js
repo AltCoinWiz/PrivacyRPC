@@ -445,6 +445,7 @@ const DEFAULT_CONFIG = {
   torConnected: false,
   torIp: null,
   trustedSites: [], // Sites where drainer warnings are suppressed
+  blockedSites: [], // Sites where all transactions are blocked
   stats: {
     proxiedRequests: 0,
     lastActivity: null
@@ -1165,8 +1166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           title: 'Protection Disabled',
           message: 'Your RPC traffic is no longer protected',
           actions: [
-            { label: 'Re-enable', action: 'enable_protection' },
-            { label: 'Dismiss', action: 'dismiss' }
+            { label: 'Re-enable', action: 'enable_protection' }
           ]
         });
       }
@@ -1303,6 +1303,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         saveConfig();
         console.log(`[PrivacyRPC] Site untrusted: ${hostname}`);
         sendResponse({ success: true, trustedSites: config.trustedSites });
+      } else {
+        sendResponse({ success: false, error: 'No hostname provided' });
+      }
+      break;
+
+    case 'GET_BLOCKED_SITES':
+      sendResponse({ blockedSites: config.blockedSites || [] });
+      break;
+
+    case 'BLOCK_SITE':
+      if (message.hostname) {
+        const hostname = message.hostname.toLowerCase();
+        if (!config.blockedSites) config.blockedSites = [];
+        if (!config.blockedSites.includes(hostname)) {
+          config.blockedSites.push(hostname);
+          saveConfig();
+          console.log(`[PrivacyRPC] Site blocked: ${hostname}`);
+        }
+        sendResponse({ success: true, blockedSites: config.blockedSites });
+      } else {
+        sendResponse({ success: false, error: 'No hostname provided' });
+      }
+      break;
+
+    case 'UNBLOCK_SITE':
+      if (message.hostname) {
+        const hostname = message.hostname.toLowerCase();
+        if (!config.blockedSites) config.blockedSites = [];
+        config.blockedSites = config.blockedSites.filter(s => s !== hostname);
+        saveConfig();
+        console.log(`[PrivacyRPC] Site unblocked: ${hostname}`);
+        sendResponse({ success: true, blockedSites: config.blockedSites });
       } else {
         sendResponse({ success: false, error: 'No hostname provided' });
       }
@@ -1503,8 +1535,23 @@ function handleNotificationAction(notificationId, action) {
       chrome.action.openPopup();
       break;
     case 'block_site':
-      // TODO: Implement site blocking
-      console.log('[PrivacyRPC] Block site requested - not yet implemented');
+      // Block the current site
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        if (tab && tab.url) {
+          try {
+            const url = new URL(tab.url);
+            const hostname = url.hostname.toLowerCase();
+            if (!config.blockedSites) config.blockedSites = [];
+            if (!config.blockedSites.includes(hostname)) {
+              config.blockedSites.push(hostname);
+              saveConfig();
+              console.log(`[PrivacyRPC] Site blocked: ${hostname}`);
+            }
+          } catch (e) {
+            console.log('[PrivacyRPC] Could not block site:', e);
+          }
+        }
+      });
       break;
     case 'close_tab':
       // Close the current tab (user clicked "Leave Site" on scam warning)
@@ -1561,8 +1608,7 @@ chrome.proxy.onProxyError.addListener((details) => {
       title: 'Proxy Connection Error',
       message: 'Desktop app not running. RPC routing disabled until reconnected.',
       actions: [
-        { label: 'Open Settings', action: 'open_settings' },
-        { label: 'Dismiss', action: 'dismiss' }
+        { label: 'Open Settings', action: 'open_settings' }
       ]
     });
 
@@ -1715,8 +1761,8 @@ chrome.webRequest.onBeforeRequest.addListener(
                     tabId: details.tabId,
                     priority: 80,
                     actions: [
-                      { label: 'Trust Site', action: `trust_site:${tabHostname}` },
-                      { label: 'Dismiss', action: 'dismiss' }
+                      { label: 'Approve Transaction', action: `trust_site:${tabHostname}` },
+                      { label: 'Block Transaction', action: 'block_site' }
                     ]
                   });
                 }
@@ -1779,9 +1825,8 @@ chrome.webRequest.onBeforeRequest.addListener(
                     message: warning.message,
                     tabId: details.tabId,
                     actions: [
-                      { label: 'Trust Site', action: `trust_site:${tabHostname}` },
-                      { label: 'Block Site', action: 'block_site' },
-                      { label: 'Dismiss', action: 'dismiss' }
+                      { label: 'Approve Transaction', action: `trust_site:${tabHostname}` },
+                      { label: 'Block Transaction', action: 'block_site' }
                     ]
                   });
                   console.log(`[PrivacyRPC] DRAINER WARNING: ${warning.title} - ${warning.message}`);
@@ -1812,8 +1857,7 @@ chrome.webRequest.onBeforeRequest.addListener(
                 tabId: details.tabId,
                 actions: [
                   { label: 'Enable Protection', action: 'enable_protection' },
-                  { label: 'Trust Site', action: `trust_site:${tabHostname}` },
-                  { label: 'Dismiss', action: 'dismiss' }
+                  { label: 'Approve Transaction', action: `trust_site:${tabHostname}` }
                 ]
               });
             } catch (e) {}
@@ -2100,8 +2144,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         title: 'Proxy Offline',
         message: 'The proxy server is not responding. Your RPC traffic may not be protected.',
         actions: [
-          { label: 'Open Settings', action: 'open_settings' },
-          { label: 'Dismiss', action: 'dismiss' }
+          { label: 'Open Settings', action: 'open_settings' }
         ]
       });
     }

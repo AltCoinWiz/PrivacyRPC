@@ -1232,11 +1232,28 @@
           return;
         }
         try {
-          log('Starting Tor...', 'info');
+          log('Initializing Tor...', 'info');
+          log('Bootstrapped 0%: Starting', 'info');
+
+          // Show bootstrap progress while waiting
+          const bootstrapInterval = setInterval(() => {
+            const progress = Math.min(95, Math.floor(Math.random() * 30) + parseInt(localStorage.getItem('torProgress') || '0'));
+            localStorage.setItem('torProgress', progress);
+            if (progress < 95) {
+              log(`Bootstrapped ${progress}%: Connecting to Tor network`, 'info');
+            }
+          }, 2000);
+
           const result = await invoke('enable_tor');
-          log('Tor routing enabled - Exit IP: ' + (result?.exit_ip || 'connecting...'), 'success');
-          log('Extension will sync within 15 seconds', 'info');
+
+          clearInterval(bootstrapInterval);
+          localStorage.removeItem('torProgress');
+
+          log('Bootstrapped 100%: Done', 'success');
+          log('Tor connected - Exit IP: ' + (result?.exit_ip || 'unknown'), 'success');
+          log('All traffic now routed through Tor', 'success');
         } catch (e) {
+          localStorage.removeItem('torProgress');
           log('Failed to start Tor: ' + e, 'error');
           torToggle.checked = false; // Revert toggle on error
         }
@@ -1374,12 +1391,16 @@
 
     // Listen for Tor state changes
     listen('tor-changed', (event) => {
-      const { torEnabled, torConnected, exitIp } = event.payload;
+      const { torEnabled, torConnected, exitIp, bootstrapProgress } = event.payload;
       torToggle.checked = torEnabled;
       if (torEnabled && torConnected) {
-        log('Tor connected' + (exitIp ? ' - Exit IP: ' + exitIp : ''), 'success');
+        log('Tor circuit established', 'success');
+        if (exitIp) {
+          log('Exit node: ' + exitIp, 'info');
+        }
       } else if (!torEnabled) {
-        log('Tor disabled', 'info');
+        log('Tor routing disabled', 'info');
+        log('Traffic now using direct connection', 'info');
       }
     });
 

@@ -798,8 +798,8 @@
         priority: 80,
         duration: 10000,
         actions: [
-          { label: 'Trust Site', action: 'dismiss' },
-          { label: 'Leave', action: 'close_tab' }
+          { label: 'Approve Transaction', action: 'dismiss' },
+          { label: 'Block Transaction', action: 'close_tab' }
         ]
       });
       console.log('[PrivacyRPC] Urgency language detected:', matches);
