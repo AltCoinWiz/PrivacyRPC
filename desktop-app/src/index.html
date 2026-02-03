@@ -1200,9 +1200,15 @@
         statRequests.textContent = status.stats.requests_proxied;
         statBytes.textContent = Math.round(status.stats.bytes_transferred / 1024);
         statUptime.textContent = status.stats.uptime_seconds + 's';
-        // Load RPC endpoint if set
+        // Load RPC endpoint if set (check backend first, then localStorage backup)
         if (status.rpcEndpoint && !rpcEndpointInput.value) {
           rpcEndpointInput.value = status.rpcEndpoint;
+        } else if (!rpcEndpointInput.value) {
+          // Fallback to localStorage if backend has no endpoint
+          const savedEndpoint = localStorage.getItem('privacyrpc_endpoint');
+          if (savedEndpoint) {
+            rpcEndpointInput.value = savedEndpoint;
+          }
         }
         // Update RPC status indicator and toggle
         const currentEndpoint = status.rpcEndpoint || rpcEndpointInput.value;
@@ -1345,6 +1351,8 @@
       try {
         await invoke('set_rpc_endpoint', { endpoint });
         if (endpoint) {
+          // Also save to localStorage as backup (persists even when toggle is off)
+          localStorage.setItem('privacyrpc_endpoint', endpoint);
           log('Private RPC endpoint saved and enabled', 'success');
           updateRpcStatus(endpoint, true);
           updateRpcToggleUI(true, endpoint);

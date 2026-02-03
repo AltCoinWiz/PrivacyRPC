@@ -1158,6 +1158,9 @@
           <div class="status-text">
             <h3 id="statusTitle">Protection Active</h3>
             <p id="statusSubtitle">All RPC traffic is being routed securely</p>
+            <div id="modeIndicator" style="margin-top: 6px;">
+              <span id="modeBadge" class="zk-badge" style="font-size: 9px;">PROXY MODE</span>
+            </div>
           </div>
         </div>
 
@@ -1176,27 +1179,48 @@
           <div class="toggle-row">
             <div class="toggle-info">
               <h4>PrivacyRPC Protection</h4>
-              <p>Route RPC through secure proxy</p>
+              <p id="protectionSubtext">Route RPC through secure proxy</p>
             </div>
             <label class="toggle">
               <input type="checkbox" id="toggleProtection">
               <span class="toggle-slider"></span>
             </label>
           </div>
+          <!-- Desktop app required message -->
+          <div id="desktopAppRequired" style="display: none; padding: 10px 12px; background: #0A0A0A; border-radius: 8px; margin-top: 8px; border: 1px solid #1E2328;">
+            <p style="font-size: 11px; color: #FFB800; margin-bottom: 6px;">Open desktop app and click "Start Proxy"</p>
+            <a href="https://www.privacyrpc.com/" target="_blank" style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #7D7D7D; text-decoration: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Don't have it? Download here
+            </a>
+          </div>
           <div class="toggle-row">
             <div class="toggle-info">
-              <h4>Tor Routing</h4>
-              <p>Hide IP from RPC providers</p>
+              <h4>Auto-Block Transactions</h4>
+              <p>Block all transactions without prompt</p>
             </div>
             <label class="toggle">
-              <input type="checkbox" id="toggleTor">
+              <input type="checkbox" id="toggleAutoBlock">
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <!-- Tor Status (shown when connecting/connected) -->
-          <div class="tor-status connecting" id="torStatus" style="display: none;">
-            <div class="tor-spinner" id="torSpinner"></div>
-            <span class="tor-status-text" id="torStatusText">Connecting to Tor...</span>
+          <div class="toggle-row" style="border-bottom: none;">
+            <a href="https://www.privacyrpc.com/" target="_blank" class="toggle-info" style="text-decoration: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+              <h4 style="color: #fff;">Tor Routing</h4>
+              <p style="display: flex; align-items: center; gap: 4px;">
+                Enable in desktop app
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </p>
+            </a>
+            <!-- Tor Status Indicator (read-only, controlled by desktop app) -->
+            <div id="torStatusIndicator" style="display: flex; align-items: center; gap: 8px;">
+              <span class="status-dot" id="torDot"></span>
+              <span style="font-size: 11px; color: #7D7D7D;" id="torLabel">Off</span>
+            </div>
+          </div>
+          <!-- Tor Status (shown when connected) -->
+          <div class="tor-status connected" id="torStatus" style="display: none;">
+            <span style="color: #5AF5F5;">Connected</span>
             <span class="tor-ip" id="torIp"></span>
           </div>
         </div>
@@ -1357,7 +1381,10 @@
         <div id="scanResults"></div>
 
         <div class="card">
-          <div class="card-title" style="margin-bottom: 12px;">Recent Scans</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div class="card-title" style="margin-bottom: 0;">Recent Scans</div>
+            <button class="btn btn-small" id="clearScansBtn" style="font-size: 10px; padding: 4px 8px;">Clear</button>
+          </div>
           <div class="alerts-list" id="recentScans">
             <div class="no-alerts">No recent scans</div>
           </div>
@@ -1382,16 +1409,54 @@
       <!-- Settings Page -->
       <div class="page" id="page-settings">
         <div class="settings-section">
-          <h4>Private RPC</h4>
-          <div style="background: #050505; border: 1px solid #1E2328; border-radius: 10px; padding: 14px;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-              <span class="status-dot" id="rpcStatusDot"></span>
-              <span style="font-size: 13px;" id="rpcStatusText">Checking...</span>
+          <h4>Private RPC Endpoint</h4>
+          <!-- Desktop App Required Message -->
+          <div class="card" style="border-color: #1E4040; background: linear-gradient(135deg, #050505 0%, #0A1A1A 100%);">
+            <a href="https://www.privacyrpc.com/" target="_blank" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; text-decoration: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+              <span class="icon icon-lg" style="color: #5AF5F5;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+              <div style="flex: 1;">
+                <h4 style="font-size: 14px; margin-bottom: 2px; color: #fff;">Desktop App</h4>
+                <p style="font-size: 11px; color: #7D7D7D;">Configure your private RPC in the desktop app</p>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#5AF5F5" stroke-width="2" width="16" height="16" style="flex-shrink: 0;">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </a>
+            <p style="font-size: 12px; color: #7D7D7D; line-height: 1.5; margin-bottom: 12px;">
+              Use the PrivacyRPC desktop app to enter your Helius, Alchemy, or custom RPC endpoint. The extension will automatically detect and route traffic through your private endpoint.
+            </p>
+            <div id="rpcEndpointStatus" style="padding: 10px; background: #000; border-radius: 8px; border: 1px solid #1E2328;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot" id="rpcStatusDot"></span>
+                <span style="font-size: 12px;" id="rpcStatusText">Checking...</span>
+              </div>
+              <p style="font-size: 10px; color: #7D7D7D; margin-top: 6px; font-family: monospace;" id="rpcEndpointDisplay"></p>
             </div>
-            <p style="font-size: 11px; color: #7D7D7D; margin-bottom: 12px;">Configure your private RPC endpoint in the desktop app for maximum privacy.</p>
-            <a href="https://www.privacyrpc.com/" target="_blank" style="display: flex; align-items: center; gap: 8px; color: #5AF5F5; text-decoration: none; font-size: 12px;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              Open Desktop App
+          </div>
+
+          <div class="rpc-providers" style="margin-top: 16px;">
+            <p class="settings-note" style="margin-bottom: 12px;">Helius, QuickNode, or your own node</p>
+            <a href="https://www.helius.dev/" target="_blank" class="rpc-provider-link">
+              <svg class="provider-logo" width="20" height="20" viewBox="0 0 118.08 99.32" fill="none" style="flex-shrink: 0;">
+                <path fill="#e84125" d="M74.65,24.74c-4.64-1.96-9.74-3.04-15.1-3.04s-10.46,1.08-15.1,3.04L58.32.71c.54-.94,1.9-.94,2.44,0l13.88,24.03Z"/>
+                <path fill="#e84125" d="M40.76,26.54c-9.14,5.06-16.01,13.7-18.74,24.03l-10.31-26.27c-.4-1.01.45-2.07,1.52-1.91l27.53,4.15Z"/>
+                <path fill="#e84125" d="M29,84.46L1,75.82c-1.04-.32-1.34-1.65-.55-2.38l20.8-19.3c-.34,2.07-.52,4.2-.52,6.37,0,9.04,3.09,17.36,8.27,23.95Z"/>
+                <path fill="#e84125" d="M58.97,99.32l-24.55,16.73c-.9.61-2.12.03-2.2-1.06l-2.19-29.29c7,8.2,17.36,13.44,28.94,13.61Z"/>
+                <path fill="#e84125" d="M88.98,85.82l-2.18,29.14c-.08,1.08-1.3,1.67-2.2,1.06l-24.5-16.7c11.55-.16,21.88-5.36,28.88-13.5Z"/>
+                <path fill="#e84125" d="M118.08,75.73l-27.88,8.6c5.12-6.57,8.17-14.84,8.17-23.82,0-2.2-.19-4.36-.54-6.46l20.79,19.29c.8.74.49,2.07-.54,2.38Z"/>
+                <path fill="#e84125" d="M107.39,24.35l-10.3,26.26c-2.72-10.32-9.57-18.95-18.68-24.03l27.46-4.14c1.07-.16,1.92.9,1.52,1.91Z"/>
+              </svg>
+              <div style="font-size: 14px; font-weight: 600; color: #e84125; flex: 1;">HELIUS</div>
+              <span>Sign up free</span>
+            </a>
+            <a href="https://www.quicknode.com/?via=privacyrpc" target="_blank" class="rpc-provider-link">
+              <svg class="provider-logo" width="20" height="20" viewBox="0 0 40 40" fill="none" style="flex-shrink: 0;">
+                <circle cx="20" cy="20" r="18" stroke="#0052FF" stroke-width="3" fill="none"/>
+                <circle cx="20" cy="20" r="8" fill="#0052FF"/>
+                <line x1="26" y1="26" x2="36" y2="36" stroke="#0052FF" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+              <div style="font-size: 14px; font-weight: 600; color: #0052FF; flex: 1;">QuickNode</div>
+              <span>Sign up free</span>
             </a>
           </div>
         </div>
@@ -1473,6 +1538,17 @@
           <div class="card" style="padding: 12px;">
             <div id="trustedSitesList" style="max-height: 150px; overflow-y: auto;">
               <div class="no-alerts" id="noTrustedSites">No trusted sites</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blocked Sites -->
+        <div class="settings-section">
+          <h4>Blocked Sites</h4>
+          <p style="font-size: 11px; color: #7D7D7D; margin-bottom: 8px;">Sites where all transactions are blocked</p>
+          <div class="card" style="padding: 12px;">
+            <div id="blockedSitesList" style="max-height: 150px; overflow-y: auto;">
+              <div class="no-alerts" id="noBlockedSites">No blocked sites</div>
             </div>
           </div>
         </div>

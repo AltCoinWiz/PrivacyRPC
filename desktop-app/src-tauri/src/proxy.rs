@@ -109,7 +109,7 @@ pub async fn stop_proxy_server() {
     PROXY_CONFIG.lock().running = false;
 }
 
-/// TODO: REMOVE BEFORE PRODUCTION - Test the full routing path
+/// Test the full routing path for diagnostics
 /// Returns detailed info about each step: Proxy → RPC Endpoint → Tor
 async fn test_routing_path() -> serde_json::Value {
     let start_time = std::time::Instant::now();
@@ -335,7 +335,7 @@ async fn handle_connection(
         return Ok(());
     }
 
-    // TODO: REMOVE BEFORE PRODUCTION - Test endpoint to verify routing path
+    // Diagnostic endpoint to verify routing configuration
     if request_line.starts_with("GET /test-routing") {
         let test_result = test_routing_path().await;
         let body = serde_json::to_string(&test_result).unwrap_or_default();

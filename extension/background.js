@@ -45,7 +45,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
     unprotectedWarning: true
   },
   throttling: {
-    rpcActivityCooldown: 30000,
+    rpcActivityCooldown: 5000,
     proxyErrorCooldown: 60000,
     maxNotificationsPerMinute: 5
   }
@@ -87,8 +87,8 @@ class NotificationHub {
     this.saveSettings();
   }
 
-  // Check if notification should be throttled
-  shouldThrottle(type) {
+  // Check if notification should be throttled (per-site for RPC warnings)
+  shouldThrottle(type, hostname = null) {
     const now = Date.now();
 
     // Clean old entries
@@ -102,8 +102,9 @@ class NotificationHub {
       return true;
     }
 
-    // Check type-specific cooldown
-    const lastTime = this.lastNotifications.get(type) || 0;
+    // Check type-specific cooldown (use type:hostname key for site-specific throttling)
+    const throttleKey = hostname ? `${type}:${hostname}` : type;
+    const lastTime = this.lastNotifications.get(throttleKey) || 0;
     let cooldown = 0;
 
     if (type === 'SUSPICIOUS_RPC' || type === 'RPC_BLOCKED') {
@@ -113,17 +114,18 @@ class NotificationHub {
     }
 
     if (cooldown > 0 && now - lastTime < cooldown) {
-      console.log(`[PrivacyRPC] Notification throttled: ${type} cooldown`);
+      console.log(`[PrivacyRPC] Notification throttled: ${throttleKey} cooldown`);
       return true;
     }
 
     return false;
   }
 
-  // Record notification sent
-  recordNotification(type) {
+  // Record notification sent (per-site for RPC warnings)
+  recordNotification(type, hostname = null) {
     const now = Date.now();
-    this.lastNotifications.set(type, now);
+    const throttleKey = hostname ? `${type}:${hostname}` : type;
+    this.lastNotifications.set(throttleKey, now);
     this.notificationsThisMinute.push(now);
   }
 
@@ -176,11 +178,12 @@ class NotificationHub {
       message,
       priority = NotificationTypes[type]?.priority || 50,
       actions = [],
-      tabId = null
+      tabId = null,
+      hostname = null
     } = notification;
 
-    // Check throttling
-    if (this.shouldThrottle(type)) {
+    // Check throttling (per-site for drainer warnings)
+    if (this.shouldThrottle(type, hostname)) {
       return { throttled: true };
     }
 
@@ -198,9 +201,9 @@ class NotificationHub {
       });
     }
 
-    // Record notification
+    // Record notification (per-site)
     if (results.native || results.overlay) {
-      this.recordNotification(type);
+      this.recordNotification(type, hostname);
     }
 
     return results;
@@ -436,6 +439,7 @@ const ZK_METHODS = [
 // Default configuration
 const DEFAULT_CONFIG = {
   enabled: false,
+  proxyRunning: false, // Actual proxy connection status (not just toggle)
   proxyHost: '127.0.0.1',
   proxyPort: 8899,
   proxyType: 'HTTP', // HTTP or SOCKS5
@@ -725,35 +729,23 @@ async function updateIcon() {
     const startX = size - 75;
     const startY = size - 22;
 
-    // Proxy dot - first dot
-    if (config.enabled) {
-      ctx.beginPath();
-      ctx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#5AF5F5';
-      ctx.fill();
-    }
+    // Proxy dot - first dot (teal when toggle ON + connected, gray otherwise)
+    ctx.beginPath();
+    ctx.arc(startX, startY, dotSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = (config.enabled && config.proxyRunning) ? '#5AF5F5' : '#4A4A4A';
+    ctx.fill();
 
-    // Tor dot - second dot
-    if (config.torConnected) {
-      ctx.beginPath();
-      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#5AF5F5';
-      ctx.fill();
-    } else if (config.torEnabled) {
-      // Connecting - yellow dot
-      ctx.beginPath();
-      ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFB800';
-      ctx.fill();
-    }
+    // Tor dot - second dot (teal=connected, yellow=connecting, gray=off) - requires toggle ON
+    ctx.beginPath();
+    ctx.arc(startX + spacing, startY, dotSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = (config.enabled && config.torConnected) ? '#5AF5F5' : ((config.enabled && config.torEnabled) ? '#FFB800' : '#4A4A4A');
+    ctx.fill();
 
-    // RPC dot - third dot
-    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
-      ctx.beginPath();
-      ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#5AF5F5';
-      ctx.fill();
-    }
+    // RPC dot - third dot (teal=active, gray=off) - requires toggle ON
+    ctx.beginPath();
+    ctx.arc(startX + spacing * 2, startY, dotSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = (config.enabled && config.proxyRunning && config.proxyMode === 'private_rpc' && config.rpcEndpoint) ? '#5AF5F5' : '#4A4A4A';
+    ctx.fill();
 
     // Convert to ImageData and set as icon
     const imageData = ctx.getImageData(0, 0, size, size);
@@ -839,6 +831,7 @@ async function fetchProxyConfig() {
       const proxyConfig = await response.json();
 
       // Update our config with all proxy settings
+      config.proxyRunning = true;
       config.proxyMode = proxyConfig.mode || 'proxy_only';
       config.rpcEndpoint = proxyConfig.rpcEndpoint || null;
       config.torEnabled = proxyConfig.torEnabled || false;
@@ -863,7 +856,8 @@ async function fetchProxyConfig() {
       return proxyConfig;
     }
   } catch (e) {
-    // Proxy not running - clear Tor status to avoid showing stale data
+    // Proxy not running - clear all proxy status to avoid showing stale data
+    config.proxyRunning = false;
     config.torEnabled = false;
     config.torConnected = false;
     config.torIp = null;
@@ -1172,6 +1166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       applyProxySettings();
+      updateIcon(); // Update icon to reflect toggle state
       sendResponse({ success: true });
       break;
 
@@ -1484,15 +1479,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle notification action clicks
 function handleNotificationAction(notificationId, action) {
-  console.log(`[PrivacyRPC] Notification action: ${action} from ${notificationId}`);
-
   // Handle trust_site:hostname format
   if (action.startsWith('trust_site:')) {
     const hostname = action.split(':')[1];
     if (hostname && !config.trustedSites.includes(hostname)) {
       config.trustedSites.push(hostname);
       saveConfig();
-      console.log(`[PrivacyRPC] Site trusted via notification: ${hostname}`);
+      broadcastToAllTabs({ type: 'SITES_UPDATED' });
+      console.log(`[PrivacyRPC] Site trusted: ${hostname}`);
       // Show confirmation
       notificationHub.notify({
         type: 'PROTECTION_ON',
@@ -1513,6 +1507,7 @@ function handleNotificationAction(notificationId, action) {
     if (hostname) {
       config.trustedSites = config.trustedSites.filter(s => s !== hostname);
       saveConfig();
+      broadcastToAllTabs({ type: 'SITES_UPDATED' });
       console.log(`[PrivacyRPC] Site untrusted via notification: ${hostname}`);
     }
     return;
@@ -1545,6 +1540,7 @@ function handleNotificationAction(notificationId, action) {
             if (!config.blockedSites.includes(hostname)) {
               config.blockedSites.push(hostname);
               saveConfig();
+              broadcastToAllTabs({ type: 'SITES_UPDATED' });
               console.log(`[PrivacyRPC] Site blocked: ${hostname}`);
             }
           } catch (e) {
@@ -1624,7 +1620,7 @@ function isRpcUrl(urlString) {
   try {
     const url = new URL(urlString);
 
-    // TODO: REMOVE BEFORE PRODUCTION - localhost detection for testing only
+    // Local development RPC endpoints
     if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
         (url.port === '3333' || url.pathname.includes('mock-rpc') || url.pathname.includes('rpc'))) {
       return true;
@@ -1668,11 +1664,6 @@ chrome.webRequest.onBeforeRequest.addListener(
       return;
     }
 
-    // DEBUG: Log all POST requests to help troubleshoot
-    if (details.method === 'POST') {
-      console.log('[PrivacyRPC DEBUG] POST request:', details.url, 'hasBody:', !!details.requestBody);
-    }
-
     const isRpc = isRpcUrl(details.url);
 
     // Also check if this looks like a JSON-RPC call (POST with JSON body to any URL)
@@ -1693,15 +1684,12 @@ chrome.webRequest.onBeforeRequest.addListener(
         }
 
         if (body) {
-          console.log('[PrivacyRPC DEBUG] Request body:', body.substring(0, 200));
-
           if (body.includes('jsonrpc') || body.includes('getBalance') ||
               body.includes('getAccountInfo') || body.includes('sendTransaction') ||
               body.includes('simulateTransaction') || body.includes('getRecentBlockhash') ||
               body.includes('getLatestBlockhash') || body.includes('getSignatureStatuses') ||
               body.includes('getTokenAccountsByOwner')) {
             isJsonRpc = true;
-            console.log('[PrivacyRPC DEBUG] JSON-RPC detected in body!');
 
             // Extract the RPC method name for pattern detection
             try {
@@ -1715,7 +1703,7 @@ chrome.webRequest.onBeforeRequest.addListener(
           }
         }
       } catch (e) {
-        console.log('[PrivacyRPC DEBUG] Body parse error:', e.message);
+        // Silently ignore parse errors
       }
     }
 
@@ -1824,6 +1812,7 @@ chrome.webRequest.onBeforeRequest.addListener(
                     title: warning.title,
                     message: warning.message,
                     tabId: details.tabId,
+                    hostname: tabHostname, // Per-site throttling
                     actions: [
                       { label: 'Approve Transaction', action: `trust_site:${tabHostname}` },
                       { label: 'Block Transaction', action: 'block_site' }

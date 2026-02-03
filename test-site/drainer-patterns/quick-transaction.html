@@ -7,40 +7,44 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f0f;
+      background: #0a0a0f;
       color: #fff;
       min-height: 100vh;
       padding: 40px;
     }
     .container { max-width: 500px; margin: 0 auto; }
-    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #e42575; }
+    .logo { font-size: 28px; font-weight: bold; margin-bottom: 40px; color: #5AF5F5; }
     .card {
-      background: #1a1a1a;
-      border-radius: 16px;
-      padding: 30px;
+      background: #050505;
+      border: 1px solid #1E2328;
+      border-radius: 12px;
+      padding: 24px;
     }
     .test-info {
-      background: rgba(255,184,0,0.1);
+      background: rgba(255,184,0,0.05);
       border: 1px solid #FFB800;
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 20px;
-      font-size: 13px;
+      font-size: 12px;
     }
-    .test-info h4 { color: #FFB800; margin-bottom: 8px; }
+    .test-info h4 { color: #FFB800; margin-bottom: 8px; font-size: 13px; }
+    .test-info p { color: #7D7D7D; line-height: 1.5; }
     .status {
       margin-top: 20px;
       padding: 16px;
-      background: rgba(255,0,0,0.1);
+      background: #000;
       border: 1px solid #ff4757;
       border-radius: 8px;
-      font-family: monospace;
-      font-size: 12px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 11px;
       max-height: 300px;
       overflow-y: auto;
+      color: #ff4757;
     }
     .nft-card {
-      background: #252525;
+      background: #0A0A0A;
+      border: 1px solid #1E2328;
       border-radius: 12px;
       padding: 16px;
       margin-bottom: 20px;
@@ -48,24 +52,26 @@
     .nft-image {
       width: 100%;
       height: 200px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #1E2328 0%, #0A0A0A 100%);
       border-radius: 8px;
       margin-bottom: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 48px;
+      border: 1px solid #1E2328;
     }
     .btn {
       width: 100%;
-      padding: 16px;
-      background: linear-gradient(135deg, #e42575 0%, #c71f65 100%);
+      padding: 14px;
+      background: #5AF5F5;
       border: none;
-      border-radius: 12px;
-      color: #fff;
-      font-size: 16px;
+      border-radius: 8px;
+      color: #000;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
+      transition: opacity 0.2s;
     }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }

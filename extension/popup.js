@@ -1010,7 +1010,7 @@ function updateUI() {
 
   // RPC Endpoint Status in Settings
   if (elements.rpcStatusDot && elements.rpcStatusText) {
-    if (config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
+    if (proxyRunning && config.proxyMode === 'private_rpc' && config.rpcEndpoint) {
       elements.rpcStatusDot.className = 'status-dot active';
       elements.rpcStatusText.textContent = 'Private RPC Active';
       elements.rpcStatusText.style.color = '#5AF5F5';
@@ -2395,6 +2395,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         config.torIp = message.data.torIp || null;
         updateUI();
       }
+      break;
+
+    case 'SITES_UPDATED':
+      // Trusted/blocked sites list changed - refresh UI
+      loadTrustedSites();
+      loadBlockedSites();
       break;
   }
 });

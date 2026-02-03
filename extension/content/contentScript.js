@@ -44,11 +44,18 @@
 
   // Track current proxy status to re-send when injected script signals ready
   let currentProxyEnabled = false;
+  let statusCheckComplete = false;
 
   // Listen for injected script ready signal
-  window.addEventListener('privacyrpc-injected-ready', () => {
-    console.log('[PrivacyRPC] Injected script ready, sending proxy status');
-    setProxyEnabled(currentProxyEnabled);
+  window.addEventListener('privacyrpc-injected-ready', async () => {
+    console.log('[PrivacyRPC] Injected script ready, checking proxy status...');
+    // If status check already completed, use cached value; otherwise fetch fresh
+    if (statusCheckComplete) {
+      setProxyEnabled(currentProxyEnabled);
+    } else {
+      // Fetch fresh status since initial check might not be done
+      await updateProxyStatus();
+    }
   });
 
   // Modified checkProxyStatus to store the result
@@ -57,15 +64,18 @@
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
       if (!response || !response.enabled) {
         currentProxyEnabled = false;
+        statusCheckComplete = true;
         setProxyEnabled(false);
         return;
       }
       const proxyCheck = await chrome.runtime.sendMessage({ type: 'CHECK_PROXY' });
       currentProxyEnabled = proxyCheck && proxyCheck.running;
+      statusCheckComplete = true;
       setProxyEnabled(currentProxyEnabled);
     } catch (e) {
       console.log('[PrivacyRPC] Could not check proxy status:', e);
       currentProxyEnabled = false;
+      statusCheckComplete = true;
       setProxyEnabled(false);
     }
   }
